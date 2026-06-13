@@ -1,9 +1,17 @@
 """One-off: resolve the Messier and Caldwell catalogs via SIMBAD and write
 messier_caldwell.json (ra/dec/type/mag/size/common name) for the sky map overlay.
 Run once; the result is shipped as a data file so the map needs no live lookups."""
-import os, re, json, time, urllib.request, urllib.parse
+import os, re, json, sys, time, urllib.request, urllib.parse
 from astropy.coordinates import SkyCoord
 import astropy.units as u
+
+# Keep redirected/piped output from crashing on non-ASCII object names on Windows,
+# where stdout otherwise defaults to the legacy locale codepage (e.g. cp1252).
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 OUTPUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'messier_caldwell.json')
 

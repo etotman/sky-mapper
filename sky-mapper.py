@@ -21,6 +21,16 @@ from astropy.wcs import WCS
 from astropy.coordinates import SkyCoord, get_constellation
 import astropy.units as u
 
+# Make console output UTF-8 safe everywhere. On Windows, when stdout is a pipe or
+# redirected to a file, Python defaults to the legacy locale codepage (e.g. cp1252)
+# and the emoji/arrow status lines below would raise UnicodeEncodeError mid-scan.
+# Interactive terminals are unaffected; this just keeps redirected runs from crashing.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 # Sky Mapper — scans FITS/XISF files, extracts RA/DEC, target names, exposure and
 # capture metadata (plate-solved WCS where available), clusters nearby frames, and
 # generates an interactive Aladin Lite sky map. A small local web server serves the
