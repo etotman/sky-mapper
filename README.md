@@ -98,7 +98,7 @@ Turn on **Plan mode** and click any patch of sky to get a planning popup:
 
 ```bash
 # 1. Clone
-git clone https://github.com/<your-username>/sky-mapper.git
+git clone https://github.com/etotman/sky-mapper.git
 cd sky-mapper
 
 # 2. (Recommended) create a virtual environment
@@ -121,7 +121,7 @@ up in the repository.
 ## Usage
 
 ```bash
-python sky_mapper12.py
+python sky-mapper.py
 ```
 
 On the first run it scans your folders (reading each file's header once and caching
@@ -138,7 +138,7 @@ pruned. You can also rebuild without the terminal using the in‑page **Rescan**
 
 ## Configuration
 
-Set these in `local_config.py` (any of them override the defaults in `sky_mapper12.py`):
+Set these in `local_config.py` (any of them override the defaults in `sky-mapper.py`):
 
 | Setting | Purpose |
 |---|---|
@@ -153,7 +153,7 @@ Set these in `local_config.py` (any of them override the defaults in `sky_mapper
 
 ## How it works
 
-- **Scanner** (`sky_mapper12.py`) walks `SEARCH_DIRS`, reads RA/Dec, target, exposure,
+- **Scanner** (`sky-mapper.py`) walks `SEARCH_DIRS`, reads RA/Dec, target, exposure,
   filter, date, camera FOV/rotation and capture conditions from each FITS/XISF header,
   and caches them keyed by file path + modification time.
 - **Map generation** clusters frames by sky position, computes true footprints, and
@@ -170,7 +170,7 @@ Pull the latest code; your `local_config.py` and caches are untouched:
 
 ```bash
 git pull
-python sky_mapper12.py     # rescans and regenerates the map
+python sky-mapper.py     # rescans and regenerates the map
 ```
 
 ---
@@ -200,3 +200,9 @@ because they contain your local file paths or are regenerated on demand:
 - [Aladin Lite](https://aladin.cds.unistra.fr/AladinLite/) and the survey HiPS, by CDS, Strasbourg
 - [SIMBAD](https://simbad.cds.unistra.fr/) (CDS) and [NED](https://ned.ipac.caltech.edu/) (IPAC/Caltech) for object reference data
 - Constellation line data from [d3‑celestial](https://github.com/ofrohn/d3-celestial)
+
+---
+
+## License
+
+Released under the [MIT License](LICENSE).

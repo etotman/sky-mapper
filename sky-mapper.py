@@ -127,7 +127,7 @@ FOLDER_PANEL_Y = 90
 HIGHLIGHT_COLOR = "#ff00ff"   # magenta
 
 WEB_SERVER_PORT = 8001         # v12 uses its own port so it can run alongside v11
-SERVER_VERSION  = 10           # bump when the server's API code changes, to force a
+SERVER_VERSION  = 12           # bump when the server's API code changes, to force a
                                # running background server to be replaced on next run
 
 CONSTELLATION_FILE = os.path.join(SCRIPT_DIR, "constellations.lines.json")
@@ -1014,9 +1014,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 <input type="checkbox" id="constellation-toggle"> Constellation lines
             </label>
             <label class="checkbox-container">
-                <input type="checkbox" id="copy-toggle" checked> Click-to-copy coordinates
-            </label>
-            <label class="checkbox-container">
                 <input type="checkbox" id="mosaic-toggle" checked> Show mosaic frames
             </label>
             <label class="checkbox-container" title="Draws an outline around the part of the sky that rises above the minimum altitude during darkness tonight. Site location comes from your image headers (or the Python script).">
@@ -1111,7 +1108,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
             const els = {
                 grid:           document.getElementById('grid-toggle'),
-                copy:           document.getElementById('copy-toggle'),
                 constellations: document.getElementById('constellation-toggle'),
                 mosaics:        document.getElementById('mosaic-toggle'),
                 tonight:        document.getElementById('tonight-toggle'),
@@ -1442,15 +1438,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 }
             }
 
-            // ---------- map click: copy coords (if enabled) + open details ----------
+            // ---------- map click: open details, or plan popup in plan mode ----------
             aladin.on('click', (object) => {
                 if (!object || object.ra === undefined || object.dec === undefined) return;
-                if (els.copy.checked) {
-                    const raDecStr = object.ra.toFixed(6) + ', ' + object.dec.toFixed(6);
-                    navigator.clipboard.writeText(raDecStr)
-                        .then(() => toastMsg('Copied: ' + raDecStr))
-                        .catch(err => console.error('Could not copy text to clipboard: ', err));
-                }
                 const c = findClusterAt(object.ra, object.dec);
                 if (c) { showDetails(c); }
                 else { hideDetails(); if (planMode) openPlanPopup(object.ra, object.dec); }
@@ -1584,7 +1574,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 if (e.target.checked) aladin.showCooGrid(); else aladin.hideCooGrid();
                 saveState();
             });
-            els.copy.addEventListener('change', saveState);
             els.survey.addEventListener('change', (e) => {
                 aladin.setBaseImageLayer(aladin.createImageSurvey(e.target.value));
                 saveState();
@@ -2241,7 +2230,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                     localStorage.setItem(LS_KEY, JSON.stringify({
                         survey: els.survey.value,
                         grid: els.grid.checked,
-                        copy: els.copy.checked,
                         constellations: els.constellations.checked,
                         mosaics: els.mosaics.checked,
                         tonight: els.tonight.checked,
@@ -2269,7 +2257,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                     els.survey.value = s.survey;
                     aladin.setBaseImageLayer(aladin.createImageSurvey(s.survey));
                 }
-                for (const key of ['grid', 'copy', 'constellations', 'mosaics', 'tonight', 'flipH', 'flipV']) {
+                for (const key of ['grid', 'constellations', 'mosaics', 'tonight', 'flipH', 'flipV']) {
                     if (typeof s[key] === 'boolean') els[key].checked = s[key];
                 }
                 if (els.flipH.checked || els.flipV.checked) applyFlips();
