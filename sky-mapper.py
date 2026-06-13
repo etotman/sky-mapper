@@ -21,29 +21,17 @@ from astropy.wcs import WCS
 from astropy.coordinates import SkyCoord, get_constellation
 import astropy.units as u
 
-# sky_mapper11 — scans FITS/XISF files, extracts RA/DEC + target names + exposure
-# metadata, clusters nearby targets, and generates an interactive Aladin Lite map.
+# Sky Mapper — scans FITS/XISF files, extracts RA/DEC, target names, exposure and
+# capture metadata (plate-solved WCS where available), clusters nearby frames, and
+# generates an interactive Aladin Lite sky map. A small local web server serves the
+# map plus an API for live FITS/XISF headers, SIMBAD lookups, and rescans.
+# Calibration frames, mosaics, and coordinate-less test frames are handled
+# automatically; UI state persists in the browser.
 #
-# New in v11:
-#   • Cluster data is embedded as JSON; the page builds overlays dynamically.
-#   • Click a footprint → details panel (frames, integration time per filter, dates).
-#   • Per-rig show/hide checkboxes in the legend.
-#   • "Dim targets not imageable tonight" mode (uses OBSERVER_LAT/LON below).
-#   • Export target list as CSV.
-#   • Labels auto-hide when zoomed out past LABEL_HIDE_FOV_DEG.
-#   • Optional constellation lines overlay (checkbox; data auto-downloaded once).
-#   • Calibration frames (dark/flat/bias) detected via IMAGETYP header (or filename
-#     tokens when no header) and skipped.
-#   • Files without coordinates (test images etc.) are skipped and remembered.
-#   • Mosaic frames (filename/target contains "mosaic"/"panel") can be hidden
-#     with a checkbox.
-#   • Local web server starts automatically (only if not already running).
-#   • UI state (survey, checkboxes, rig toggles) persists in the browser.
-#   • Cluster centers averaged with unit vectors (fixes RA 0/360 wraparound).
-#   • XISF header length read from the file header instead of a fixed 16 KB.
-#
-# All output files (cache, HTML, constellation data) live next to this script,
-# regardless of the directory you run it from.
+# All files this script reads and writes — the metadata cache, the generated HTML,
+# the downloaded constellation data, the SIMBAD lookup cache, and the
+# Messier/Caldwell catalog — live next to this script (SCRIPT_DIR), regardless of
+# the directory you run it from.
 
 # =============================================================================
 # CONFIGURATION
@@ -61,12 +49,21 @@ SEARCH_DIRS = [
     # (r"/Volumes/NAS/rig_c/", "#44aaff", "Rig C"),
 ]
 
-# Target keywords to exclude from map rendering (case-insensitive)
+# Target-name substrings to exclude from the map (case-insensitive). Keep these
+# distinctive so they don't accidentally match real deep-sky target names.
 EXCLUDE_KEYWORDS = [
     "flatwizard",
     "snapshot",
-    "tsuchinshan",
 ]
+
+# Solar-system bodies move against the fixed star field, so it makes no sense to
+# plot frames whose target IS one of these. Matched as the EXACT target name
+# (case-insensitive) — so deep-sky objects named after planets, e.g. the Saturn
+# Nebula (NGC 7009) or the Ghost of Jupiter (NGC 3242), are NOT excluded.
+EXCLUDE_TARGETS = {
+    "moon", "sun", "mercury", "venus", "mars", "jupiter",
+    "saturn", "uranus", "neptune", "pluto",
+}
 
 # Filenames made only of these tokens are treated as calibration frames when the
 # file has no IMAGETYP header. (Header check happens first, so a *target* named
@@ -127,7 +124,7 @@ FOLDER_PANEL_Y = 90
 HIGHLIGHT_COLOR = "#ff00ff"   # magenta
 
 WEB_SERVER_PORT = 8001         # v12 uses its own port so it can run alongside v11
-SERVER_VERSION  = 13           # bump when the server's API code changes, to force a
+SERVER_VERSION  = 14           # bump when the server's API code changes, to force a
                                # running background server to be replaced on next run
 
 CONSTELLATION_FILE = os.path.join(SCRIPT_DIR, "constellations.lines.json")
@@ -192,7 +189,9 @@ def target_from_filename(filepath: str) -> str | None:
 def should_exclude_target(target_name: str) -> bool:
     if not target_name:
         return False
-    target_lower = target_name.lower()
+    target_lower = target_name.strip().lower()
+    if target_lower in EXCLUDE_TARGETS:            # exact match (solar-system bodies)
+        return True
     return any(keyword.lower() in target_lower for keyword in EXCLUDE_KEYWORDS)
 
 
@@ -1864,7 +1863,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 } catch (e) {
                     if (reqId !== headerReqId) return;
                     headerPre.textContent = 'Could not reach the header service.\n' +
-                        'Make sure the map was opened via the server the script started (python sky_mapper12.py).';
+                        'Make sure the map was opened via the server the script started (python sky-mapper.py).';
                 }
             }
             document.getElementById('header-panel-close').addEventListener('click', () => {

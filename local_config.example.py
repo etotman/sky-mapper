@@ -1,6 +1,6 @@
 # Copy this file to local_config.py and edit it with your own settings.
 # local_config.py is git-ignored, so your real paths stay out of the repo.
-# Anything you set here overrides the matching constant in sky_mapper12.py.
+# Anything you set here overrides the matching constant in sky-mapper.py.
 
 # One entry per imaging rig / image folder: (absolute_path, hex_color, label)
 SEARCH_DIRS = [
@@ -21,5 +21,12 @@ SEARCH_DIRS = [
 # Optional — web server port (the map is served at http://localhost:<port>/).
 # WEB_SERVER_PORT = 8001
 
-# Optional — target name keywords to exclude from the map.
-# EXCLUDE_KEYWORDS = ["flatwizard", "snapshot", "tsuchinshan"]
+# Optional — target-name substrings to exclude from the map (keep them distinctive
+# so they don't match real deep-sky names).
+# EXCLUDE_KEYWORDS = ["flatwizard", "snapshot"]
+
+# Optional — exact target names to exclude (solar-system bodies move, so plotting
+# them on a fixed sky map is meaningless). Exact match keeps planet-named nebulae
+# like the Saturn Nebula and Ghost of Jupiter on the map.
+# EXCLUDE_TARGETS = {"moon", "sun", "mercury", "venus", "mars", "jupiter",
+#                    "saturn", "uranus", "neptune", "pluto"}

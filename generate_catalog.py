@@ -1,9 +1,11 @@
 """One-off: resolve the Messier and Caldwell catalogs via SIMBAD and write
 messier_caldwell.json (ra/dec/type/mag/size/common name) for the sky map overlay.
 Run once; the result is shipped as a data file so the map needs no live lookups."""
-import re, json, time, urllib.request, urllib.parse
+import os, re, json, time, urllib.request, urllib.parse
 from astropy.coordinates import SkyCoord
 import astropy.units as u
+
+OUTPUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'messier_caldwell.json')
 
 # Caldwell number -> designation SIMBAD understands (Caldwell isn't a SIMBAD catalog).
 CALDWELL = {
@@ -80,7 +82,7 @@ for n, desig in CALDWELL.items():
         print(f"C{n} ({desig}): FAILED")
     time.sleep(0.15)
 
-with open('messier_caldwell.json','w') as f:
+with open(OUTPUT, 'w') as f:
     json.dump(catalog, f)
 print(f"\nWrote {len(catalog)} objects "
       f"({sum(1 for o in catalog if o['cat']=='M')} Messier, "
