@@ -203,6 +203,17 @@ because they contain your local file paths or are regenerated on demand:
 
 ---
 
+## Disclaimer
+
+Sky Mapper only **reads** your image files — it opens each FITS/XISF file read‑only to
+parse its header and never modifies, moves, renames, or deletes your source images. It
+writes only its own files (the generated `aladin_map.html` and its caches) inside its
+own folder, and the **Rescan** action only updates that cache, never your originals.
+That said, your captured data is irreplaceable: **always keep multiple backups.** This
+software is provided "as is", without warranty of any kind (see the [LICENSE](LICENSE)).
+
+---
+
 ## License
 
 Released under the [MIT License](LICENSE).
