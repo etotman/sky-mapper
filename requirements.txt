@@ -1,0 +1,3 @@
+# Sky Mapper requires Python 3.10+ and Astropy.
+# Astropy pulls in numpy automatically.
+astropy>=5.0
