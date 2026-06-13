@@ -85,6 +85,7 @@ Turn on **Plan mode** and click any patch of sky to get a planning popup:
 
 ## Requirements
 
+- **Cross‑platform:** runs on macOS, Linux, and Windows
 - **Python 3.10 or newer**
 - **[Astropy](https://www.astropy.org/)** (the only third‑party dependency; it pulls
   in NumPy automatically) — see [`requirements.txt`](requirements.txt)

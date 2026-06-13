@@ -127,7 +127,7 @@ FOLDER_PANEL_Y = 90
 HIGHLIGHT_COLOR = "#ff00ff"   # magenta
 
 WEB_SERVER_PORT = 8001         # v12 uses its own port so it can run alongside v11
-SERVER_VERSION  = 12           # bump when the server's API code changes, to force a
+SERVER_VERSION  = 13           # bump when the server's API code changes, to force a
                                # running background server to be replaced on next run
 
 CONSTELLATION_FILE = os.path.join(SCRIPT_DIR, "constellations.lines.json")
@@ -716,7 +716,9 @@ def build_folder_data(cache: dict) -> dict:
             node['fp'].append(idx)
         node.setdefault('files', []).append([os.path.basename(filepath), idx])
         if 'adir' not in node:
-            node['adir'] = os.path.dirname(filepath)
+            # Forward slashes so the browser can join "adir/file" consistently on
+            # Windows too; the header endpoint normalizes via os.path.realpath.
+            node['adir'] = os.path.dirname(filepath).replace(os.sep, '/')
 
     for n in nodes:
         if n.get('files'):
@@ -2558,6 +2560,11 @@ class MapRequestHandler(SimpleHTTPRequestHandler):
         if parsed.path == '/api/objectinfo':
             self._serve_objectinfo(parse_qs(parsed.query))
             return
+        if parsed.path == '/api/shutdown':
+            # Lets a new run stop an older instance cross-platform (no kill/lsof).
+            self._send_text('bye')
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            return
         return super().do_GET()
 
     def _serve_objectinfo(self, query):
@@ -2656,32 +2663,77 @@ def _server_is_ours(port: int) -> bool:
         return False
 
 
+def _port_in_use(port: int) -> bool:
+    try:
+        socket.create_connection(('127.0.0.1', port), timeout=0.3).close()
+        return True
+    except OSError:
+        return False
+
+
+def _force_free_port(port: int) -> None:
+    """Best-effort, cross-platform: free a port held by a process that didn't
+    respond to /api/shutdown (e.g. a foreign program or a very old instance)."""
+    try:
+        if os.name == 'nt':
+            out = subprocess.run(['netstat', '-ano'], capture_output=True, text=True).stdout
+            pids = {line.split()[-1] for line in out.splitlines()
+                    if f':{port}' in line and 'LISTENING' in line.upper()}
+            for pid in pids:
+                subprocess.run(['taskkill', '/F', '/PID', pid], capture_output=True)
+        else:
+            subprocess.run(f"kill $(lsof -ti :{port}) 2>/dev/null", shell=True, capture_output=True)
+    except Exception:
+        pass
+
+
+def _spawn_server() -> None:
+    """Start the background server, detached so it survives this process exiting."""
+    kwargs = dict(stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if os.name == 'nt':
+        # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+        kwargs['creationflags'] = 0x00000008 | 0x00000200
+    else:
+        kwargs['start_new_session'] = True
+    subprocess.Popen(
+        [sys.executable, os.path.abspath(__file__), '--serve', str(WEB_SERVER_PORT)],
+        **kwargs,
+    )
+
+
 def ensure_web_server() -> None:
     url = f"http://localhost:{WEB_SERVER_PORT}/{os.path.basename(OUTPUT_HTML)}"
+    stop_hint = (f"taskkill /F /PID <pid>" if os.name == 'nt'
+                 else f"kill $(lsof -ti :{WEB_SERVER_PORT})")
 
-    port_in_use = True
-    try:
-        socket.create_connection(('127.0.0.1', WEB_SERVER_PORT), timeout=0.3).close()
-    except OSError:
-        port_in_use = False
-
-    if port_in_use:
+    if _port_in_use(WEB_SERVER_PORT):
         if _server_is_ours(WEB_SERVER_PORT):
             print(f"\n🌐 Web server already running → {url}  (just refresh your browser)")
             return
-        # Something else holds our port (e.g. an old plain http.server without the
-        # header endpoint). Replace it so /api/header works.
+        # An older instance (or another program) holds our port. Ask any of our
+        # own servers to stop gracefully (cross-platform), then fall back to a
+        # best-effort OS kill if something stubborn is still listening.
         print(f"\n♻  Replacing existing server on port {WEB_SERVER_PORT} …")
-        os.system(f"kill $(lsof -ti :{WEB_SERVER_PORT}) 2>/dev/null")
-        time.sleep(0.6)
+        try:
+            urllib.request.urlopen(f'http://127.0.0.1:{WEB_SERVER_PORT}/api/shutdown', timeout=1).read()
+        except Exception:
+            pass
+        for _ in range(15):
+            if not _port_in_use(WEB_SERVER_PORT):
+                break
+            time.sleep(0.2)
+        if _port_in_use(WEB_SERVER_PORT):
+            _force_free_port(WEB_SERVER_PORT)
+            time.sleep(0.6)
+        if _port_in_use(WEB_SERVER_PORT):
+            print(f"   ⚠ Port {WEB_SERVER_PORT} is still in use by another program.")
+            print(f"     Free it (e.g. {stop_hint}) or set WEB_SERVER_PORT in local_config.py.")
+            print(f"     The map file is ready at: {OUTPUT_HTML}")
+            return
 
-    subprocess.Popen(
-        [sys.executable, os.path.abspath(__file__), '--serve', str(WEB_SERVER_PORT)],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    _spawn_server()
     print(f"\n🌐 Started web server → {url}")
-    print(f"   (Keeps running in the background; stop it with:  kill $(lsof -ti :{WEB_SERVER_PORT}) )")
+    print(f"   (Keeps running in the background; stop it with:  {stop_hint})")
     webbrowser.open(url)
 
 
