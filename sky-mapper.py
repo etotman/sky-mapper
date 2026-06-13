@@ -850,9 +850,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         .legend-row .swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; flex-shrink: 0; }
 
         #details-panel {
-            position: absolute; top: 10px; right: 10px; z-index: 150;
+            position: absolute; top: 46px; right: 10px; z-index: 150;
             background: rgba(0,0,0,0.85); padding: 14px; border-radius: 6px;
-            width: 270px; max-height: 80vh; overflow-y: auto;
+            width: 270px; max-height: calc(100vh - 56px); overflow-y: auto;
             display: none; font-size: 13px; box-shadow: 0 4px 12px rgba(0,0,0,0.6);
         }
         #details-panel h3 { margin: 0 0 6px 0; font-size: 16px; }
