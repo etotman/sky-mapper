@@ -134,7 +134,7 @@ FOLDER_PANEL_Y = 90
 HIGHLIGHT_COLOR = "#ff00ff"   # magenta
 
 WEB_SERVER_PORT = 8001         # v12 uses its own port so it can run alongside v11
-SERVER_VERSION  = 14           # bump when the server's API code changes, to force a
+SERVER_VERSION  = 15           # bump when the server's API code changes, to force a
                                # running background server to be replaced on next run
 
 CONSTELLATION_FILE = os.path.join(SCRIPT_DIR, "constellations.lines.json")
@@ -2604,10 +2604,17 @@ class MapRequestHandler(SimpleHTTPRequestHandler):
             result['simbad_url'] = 'https://simbad.cds.unistra.fr/simbad/sim-id?Ident=' + quote(name)
             result['ned_url'] = 'https://ned.ipac.caltech.edu/byname?objname=' + quote(name)
         elif ra is not None and dec is not None:
-            result['simbad_url'] = (f'https://simbad.cds.unistra.fr/simbad/sim-coo?Coord='
-                                    f'{ra}+{dec}&Radius=5&Radius.unit=arcmin')
-            result['ned_url'] = (f'https://ned.ipac.caltech.edu/conesearch?in_csys=Equatorial'
-                                 f'&in_equinox=J2000&ra={ra}&dec={dec}&radius=5')
+            # Sexagesimal h/m/s + d/m/s so NED (and SIMBAD) read RA as hours, not
+            # degrees — a bare decimal in NED's RA field is interpreted as hours.
+            c = SkyCoord(ra, dec, unit='deg')
+            ra_hms = c.ra.to_string(unit=u.hour, sep=('h ', 'm ', 's'), precision=0, pad=True)
+            dec_dms = c.dec.to_string(unit=u.deg, sep=('d ', 'm ', 's'),
+                                      precision=0, alwayssign=True, pad=True)
+            result['simbad_url'] = ('https://simbad.cds.unistra.fr/simbad/sim-coo?Coord='
+                                    + quote(ra_hms + ' ' + dec_dms) + '&Radius=5&Radius.unit=arcmin')
+            result['ned_url'] = ('https://ned.ipac.caltech.edu/conesearch?in_csys=Equatorial'
+                                 '&in_equinox=J2000&ra=' + quote(ra_hms)
+                                 + '&dec=' + quote(dec_dms) + '&radius=5')
         self._send_json(result)
 
     def _serve_rescan(self, query):
