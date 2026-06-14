@@ -14,6 +14,10 @@ SEARCH_DIRS = [
     # (r"/Volumes/NAS/rig_c/", "#44aaff", "Rig C"),
 ]
 
+# Folder names to skip during scanning (case-insensitive, exact directory-name
+# match). Any file whose path contains one of these as a path component is ignored.
+EXCLUDE_FOLDERS: set = set()
+
 # Target-name substrings to exclude from the map (case-insensitive). Keep these
 # distinctive so they don't accidentally match real deep-sky target names.
 EXCLUDE_KEYWORDS = [

@@ -25,8 +25,12 @@ def scan_files(cache: dict, only_rigs=None) -> tuple[int, int, Counter]:
             continue
         print(f"\n📂 Scanning [{rig_label}] {search_dir} …")
         all_files = []
+        excluded_lower = {f.lower() for f in EXCLUDE_FOLDERS}
         for ext in ('*.fits', '*.fit', '*.xisf'):
-            all_files.extend(glob.glob(os.path.join(search_dir, '**', ext), recursive=True))
+            for path in glob.glob(os.path.join(search_dir, '**', ext), recursive=True):
+                parts = os.path.normpath(path).split(os.sep)
+                if not any(p.lower() in excluded_lower for p in parts):
+                    all_files.append(path)
         print(f"   Found {len(all_files)} file(s).")
 
         # Prune cache entries for files under this rig dir that no longer exist on

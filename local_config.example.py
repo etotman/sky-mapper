@@ -21,6 +21,11 @@ SEARCH_DIRS = [
 # Optional — web server port (the map is served at http://localhost:<port>/).
 # WEB_SERVER_PORT = 8001
 
+# Optional — folder names to skip entirely during scanning (case-insensitive,
+# exact directory-name match). Any file under a folder with one of these names
+# is ignored, no matter how deep in the tree.
+# EXCLUDE_FOLDERS = {"_incomplete", "_dark libraries", "masters"}
+
 # Optional — target-name substrings to exclude from the map (keep them distinctive
 # so they don't match real deep-sky names).
 # EXCLUDE_KEYWORDS = ["flatwizard", "snapshot"]
