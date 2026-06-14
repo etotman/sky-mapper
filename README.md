@@ -53,14 +53,18 @@ Total integration time, light‑frame count, targets, and nights imaged; integra
 broken down **by filter, by rig, and by month**; a most‑imaged‑targets leaderboard;
 and median capture conditions (altitude, airmass, temperatures) pulled from headers.
 
-### Catalog completion (Messier · Caldwell · NGC)
-![Messier / Caldwell / NGC completion overlay](screenshots/catalog_completion.jpg)
+### Catalog completion (Messier · Caldwell · GI750)
+![Messier / Caldwell / GI750 completion overlay](screenshots/catalog_completion.jpg)
 
-Overlay the **Messier, Caldwell, and full NGC** catalogs to track your "collection."
-Each catalog has its own tab, a completion count, a **per‑catalog color picker** for
-its markers/labels, a **show‑on‑map** toggle, and an **only‑to‑do** filter to decide
-what to shoot next. Objects you've already captured show a ✓ in the list; click any
-entry to fly to it.
+Overlay the **Messier, Caldwell, and GI750** catalogs to track your "collection."
+GI750 is a curated list of 750 worthwhile deep‑sky targets, each rated **1–5** for
+quality — created and scored by [Gary Imm](https://garyimm.com). Each catalog has
+its own tab, a completion count, a **per‑catalog color
+picker** for its markers/labels, a **show‑on‑map** toggle, and an **only‑to‑do**
+filter to decide what to shoot next. On the GI750 tab a **min‑score** selector hides
+weaker targets — pick `5+` to see only the very best, `3+` for 3‑through‑5, `1+` for
+all 750. Objects you've already captured show a ✓ in the list; click any entry to fly
+to it.
 
 ### Plan mode
 ![Plan mode with altitude curve and NINA export](screenshots/plan_mode.jpg)
@@ -188,9 +192,11 @@ python sky-mapper.py     # rescans and regenerates the map
 
 ## Regenerating the catalog
 
-`messier_caldwell.json` (the Messier, Caldwell, and NGC objects used by the
-completion overlay) is included, but you can rebuild it at any time — Messier and
-Caldwell are resolved via SIMBAD and NGC is pulled from [OpenNGC](https://github.com/mattiaverga/OpenNGC):
+`messier_caldwell.json` (the Messier, Caldwell, and GI750 objects used by the
+completion overlay) is included, but you can rebuild it at any time. Messier and
+Caldwell are resolved via SIMBAD; GI750 is read from the bundled `gi750.csv`
+(coordinates, size, magnitude, and 1–5 score per object), with object types and
+common names enriched from SIMBAD:
 
 ```bash
 python generate_catalog.py
@@ -211,7 +217,7 @@ because they contain your local file paths or are regenerated on demand:
 
 - [Aladin Lite](https://aladin.cds.unistra.fr/AladinLite/) and the survey HiPS, by CDS, Strasbourg
 - [SIMBAD](https://simbad.cds.unistra.fr/) (CDS) and [NED](https://ned.ipac.caltech.edu/) (IPAC/Caltech) for object reference data
-- NGC catalog data from [OpenNGC](https://github.com/mattiaverga/OpenNGC) (CC‑BY‑SA‑4.0)
+- The **GI750** deep‑sky target list — created and scored 1–5 by [Gary Imm](https://garyimm.com)
 - Constellation line data from [d3‑celestial](https://github.com/ofrohn/d3-celestial)
 
 ---

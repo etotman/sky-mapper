@@ -302,7 +302,15 @@
                 showFullscreenControl: true,
                 showCooGrid: false
             });
-            aladin.gotoRaDec(SETTINGS.initialRa, SETTINGS.initialDec);
+            // Open centered on tonight's meridian (north up, so it renders vertical).
+            // Center declination at the observing latitude — the meridian's zenith — so
+            // the view frames what's transiting overhead. Falls back to the data
+            // centroid when no observing site is known.
+            if (SETTINGS.lat !== null && SETTINGS.lon !== null) {
+                aladin.gotoRaDec(midnightMeridianRa(), SETTINGS.lat);
+            } else {
+                aladin.gotoRaDec(SETTINGS.initialRa, SETTINGS.initialDec);
+            }
             window.aladin = aladin;   // console access for debugging
 
             const els = {
@@ -396,6 +404,15 @@
             function gmstDeg(jd) {
                 const d = jd - 2451545.0;
                 return (((280.46061837 + 360.98564736629 * d) % 360) + 360) % 360;
+            }
+            // RA of the local meridian at tonight's midnight (= local sidereal time at
+            // 00:00). This is the hour circle the dashed "midnight meridian" line marks;
+            // the map opens centered on it. Needs SETTINGS.lon.
+            function midnightMeridianRa() {
+                const mstart = new Date(); mstart.setHours(12, 0, 0, 0);
+                if (Date.now() < mstart.getTime()) mstart.setDate(mstart.getDate() - 1);
+                const jdMid = julianDate(new Date(mstart.getTime() + 12 * 3600 * 1000));
+                return ((gmstDeg(jdMid) + SETTINGS.lon) % 360 + 360) % 360;
             }
             function sunRaDec(jd) {
                 const n = jd - 2451545.0;
@@ -497,10 +514,7 @@
 
                 // Thin dashed meridian at local midnight: the hour circle (constant
                 // RA = local sidereal time at 00:00) — objects near it transit ~midnight.
-                const mstart = new Date(); mstart.setHours(12, 0, 0, 0);
-                if (Date.now() < mstart.getTime()) mstart.setDate(mstart.getDate() - 1);
-                const jdMid = julianDate(new Date(mstart.getTime() + 12 * 3600 * 1000));
-                const lstMid = ((gmstDeg(jdMid) + SETTINGS.lon) % 360 + 360) % 360;
+                const lstMid = midnightMeridianRa();
                 // dashed = short segments with gaps (Aladin ignores per-shape lineDash)
                 for (let d = -87; d < 87; d += 6) {
                     tonightOverlay.add(A.polyline([[lstMid, d], [lstMid, d + 3]],
@@ -1253,17 +1267,17 @@
                     cond;
             }
 
-            // ================= Messier / Caldwell catalog =================
-            // ================= Messier / Caldwell / NGC catalog =================
+            // ================= Messier / Caldwell / GI750 catalog =================
             let catalogData = null;
-            const CAT_LABEL = { M: 'Messier', C: 'Caldwell', N: 'NGC' };
-            const CAT_DEFAULT_COLOR = { M: '#55ddff', C: '#ffaa44', N: '#cc88ff' };
+            const CAT_LABEL = { M: 'Messier', C: 'Caldwell', G: 'GI750' };
+            const CAT_DEFAULT_COLOR = { M: '#55ddff', C: '#ffaa44', G: '#cc88ff' };
             const catColors = Object.assign({}, CAT_DEFAULT_COLOR);
-            const catShow = { M: true, C: true, N: false };   // NGC off by default (thousands of markers)
-            const catTodo = { M: false, C: false, N: false };  // "only to-do" filter, per catalog
+            const catShow = { M: true, C: true, G: false };   // GI750 off by default (750 markers)
+            const catTodo = { M: false, C: false, G: false };  // "only to-do" filter, per catalog
             let catTab = 'M';
+            let catScoreMin = 1;                               // GI750 only: show objects with score >= this (1 = all)
             const catLayers = {};                              // cat -> A.catalog
-            const catByCat = { M: [], C: [], N: [] };
+            const catByCat = { M: [], C: [], G: [] };
 
             function clusterCoversPoint(ra, dec) {
                 for (const c of DATA.clusters) {
@@ -1287,7 +1301,7 @@
             function nearbyCatalogName(ra, dec) {
                 if (!catalogData) return null;
                 const cd = Math.cos(dec * Math.PI / 180);
-                const rank = { M: 0, C: 1, N: 2 };            // prefer Messier > Caldwell > NGC name
+                const rank = { M: 0, C: 1, G: 2 };            // prefer Messier > Caldwell > GI750 name
                 let best = null, bestKey = [9, 0.1];          // [rank, distance]; 0.1° ≈ "clicked on it"
                 for (const o of catalogData) {
                     const dd = dec - o.dec;
@@ -1303,8 +1317,8 @@
             }
             function makeCatLayer(cat) {
                 const layer = A.catalog({
-                    name: 'cat-' + cat, sourceSize: cat === 'N' ? 7 : 9, shape: 'circle',
-                    color: catColors[cat], displayLabel: cat !== 'N',   // NGC has too many for labels
+                    name: 'cat-' + cat, sourceSize: 9, shape: 'circle',
+                    color: catColors[cat], displayLabel: true,
                     labelColumn: 'name', labelColor: catColors[cat], labelFont: '10px sans-serif'
                 });
                 aladin.addCatalog(layer);
@@ -1317,7 +1331,10 @@
                 const src = [];
                 for (const o of (catByCat[cat] || [])) {
                     if (catTodo[cat] && o.done) continue;
-                    src.push(A.source(o.ra, o.dec, { name: o.id }));
+                    if (cat === 'G' && (o.score || 0) < catScoreMin) continue;
+                    // GI750 uses the real object name as its label; M/C keep their
+                    // recognizable catalog ids (M1, C11) rather than the resolved desig.
+                    src.push(A.source(o.ra, o.dec, { name: cat === 'G' ? (o.desig || o.id) : o.id }));
                 }
                 if (src.length) layer.addSources(src);
             }
@@ -1330,7 +1347,7 @@
                 populateCatLayer(cat);
             }
             function applyCatVis() {
-                for (const cat of ['M', 'C', 'N']) {
+                for (const cat of ['M', 'C', 'G']) {
                     if (catShow[cat]) {
                         if (!catLayers[cat]) ensureCatLayer(cat);
                         try { catLayers[cat].show(); } catch (e) {}
@@ -1349,24 +1366,42 @@
                 renderCatalogPanel();
                 applyCatVis();
             }
+            function catVisible(o) {                           // passes the per-tab filters (to-do, score)
+                if (catTodo[o.cat] && o.done) return false;
+                if (o.cat === 'G' && (o.score || 0) < catScoreMin) return false;
+                return true;
+            }
             function renderCatalogPanel() {
-                const tabs = ['M', 'C', 'N'].map(cat =>
+                const tabs = ['M', 'C', 'G'].map(cat =>
                     '<button class="cat-tab' + (cat === catTab ? ' active' : '') + '" data-cat="' + cat + '">' +
                     CAT_LABEL[cat] + '</button>').join('');
                 const objs = catByCat[catTab] || [];
-                const done = objs.filter(o => o.done).length;
+                const shown = objs.filter(catVisible);
+                const done = shown.filter(o => o.done).length;
+                const scoreCtrl = catTab === 'G' ?
+                    '<label class="checkbox-container" title="Show only objects scored at least this (1 = all, 5 = best only)">Min score ' +
+                    '<select id="cat-score">' + [1, 2, 3, 4, 5].map(v =>
+                        '<option value="' + v + '"' + (v === catScoreMin ? ' selected' : '') + '>' + v + '+</option>').join('') +
+                    '</select></label>' : '';
                 document.getElementById('catalog-body').innerHTML =
                     '<div class="cat-tabs">' + tabs + '</div>' +
                     '<div class="cat-ctrls">' +
                     '<input type="color" id="cat-color" value="' + catColors[catTab] + '" title="Marker & label color">' +
                     '<label class="checkbox-container"><input type="checkbox" id="cat-show"' + (catShow[catTab] ? ' checked' : '') + '> Show on map</label>' +
                     '<label class="checkbox-container"><input type="checkbox" id="cat-todo"' + (catTodo[catTab] ? ' checked' : '') + '> Only to-do</label>' +
+                    scoreCtrl +
                     '</div>' +
-                    '<div class="cat-prog">' + CAT_LABEL[catTab] + ' <span class="pct">' + done + '/' + objs.length + '</span> imaged</div>' +
+                    '<div class="cat-prog">' + CAT_LABEL[catTab] + ' <span class="pct">' + done + '/' + shown.length + '</span> imaged</div>' +
                     '<div id="catalog-list"></div>';
                 document.querySelectorAll('.cat-tab').forEach(b => b.addEventListener('click', () => {
                     catTab = b.dataset.cat; renderCatalogPanel(); saveState();
                 }));
+                const scoreSel = document.getElementById('cat-score');
+                if (scoreSel) scoreSel.addEventListener('change', e => {
+                    catScoreMin = parseInt(e.target.value, 10) || 1;
+                    if (catLayers.G) populateCatLayer('G');
+                    renderCatalogPanel(); saveState();
+                });
                 document.getElementById('cat-color').addEventListener('change', e => {
                     catColors[catTab] = e.target.value;
                     if (catShow[catTab]) ensureCatLayer(catTab);   // recreate in the new color
@@ -1383,23 +1418,24 @@
                 renderCatalogList();
             }
             function renderCatalogList() {
-                const objs = catByCat[catTab] || [];
-                const todo = catTodo[catTab];
+                const objs = (catByCat[catTab] || []).filter(catVisible);
                 const list = document.getElementById('catalog-list');
                 const frag = document.createDocumentFragment();
                 let n = 0;
                 for (const o of objs) {
-                    if (todo && o.done) continue;
-                    if (++n > 1500) {                          // cap rows so the huge NGC list stays responsive
+                    if (++n > 1500) {                          // cap rows so a long list stays responsive
                         const more = document.createElement('div');
                         more.className = 'muted'; more.style.padding = '4px 2px';
-                        more.textContent = '…' + (objs.length - 1500) + ' more — use “Only to-do” to narrow the list.';
+                        more.textContent = '…' + (objs.length - 1500) + ' more — narrow with “Only to-do”' +
+                            (catTab === 'G' ? ' or a higher min score.' : '.');
                         frag.appendChild(more); break;
                     }
                     const row = document.createElement('div');
                     row.className = 'cat-row ' + (o.done ? 'done' : 'todo');
+                    const score = (o.cat === 'G' && o.score) ?
+                        ' <span style="color:#cc88ff" title="Quality score 1–5">★' + o.score + '</span>' : '';
                     row.innerHTML = '<span class="ck">' + (o.done ? '✓' : '○') + '</span>' +
-                        '<span>' + esc(o.desig || o.id) + (o.common ? ' · ' + esc(o.common) : '') +
+                        '<span>' + esc(o.desig || o.id) + score + (o.common ? ' · ' + esc(o.common) : '') +
                         ' <span style="color:#777">(' + esc(o.otype) + ')</span></span>';
                     row.addEventListener('click', () => { aladin.gotoRaDec(o.ra, o.dec); aladin.setFov(2.5); });
                     frag.appendChild(row);
@@ -1587,7 +1623,8 @@
                         catColors: catColors,
                         catShow: catShow,
                         catTodo: catTodo,
-                        catTab: catTab
+                        catTab: catTab,
+                        catScoreMin: catScoreMin
                     }));
                 } catch (e) {}
             }
@@ -1640,6 +1677,7 @@
                 if (s.catShow) Object.assign(catShow, s.catShow);
                 if (s.catTodo) Object.assign(catTodo, s.catTodo);
                 if (s.catTab && CAT_LABEL[s.catTab]) catTab = s.catTab;
+                if (s.catScoreMin >= 1 && s.catScoreMin <= 5) catScoreMin = s.catScoreMin;
             }
 
             restoreState();

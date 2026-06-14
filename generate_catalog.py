@@ -1,7 +1,9 @@
-"""One-off: resolve the Messier and Caldwell catalogs via SIMBAD and write
-messier_caldwell.json (ra/dec/type/mag/size/common name) for the sky map overlay.
-Run once; the result is shipped as a data file so the map needs no live lookups."""
-import os, re, json, sys, time, urllib.request, urllib.parse
+"""One-off: build the Messier, Caldwell, and GI750 catalogs and write
+messier_caldwell.json (ra/dec/type/mag/size/common name/score) for the sky map
+overlay. Messier and Caldwell are resolved via SIMBAD; GI750 is a curated, scored
+target list shipped as gi750.csv. Run once; the JSON is committed so the map needs
+no live lookups."""
+import os, re, csv, json, sys, time, urllib.request, urllib.parse
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 
@@ -93,75 +95,71 @@ for n, desig in CALDWELL.items():
         print(f"C{n} ({desig}): FAILED")
     time.sleep(0.15)
 
-# --- NGC catalog from OpenNGC (https://github.com/mattiaverga/OpenNGC, CC-BY-SA-4.0) ---
-# Resolving ~7800 NGC objects via SIMBAD would be far too slow, so pull OpenNGC's CSV.
-NGC_TYPE = {
-    'G': 'Galaxy', 'GPair': 'Galaxy Pair', 'GTrpl': 'Galaxy Triplet', 'GGroup': 'Galaxy Group',
-    'OCl': 'Open Cluster', 'GCl': 'Globular Cluster', 'Cl+N': 'Cluster + Nebula',
-    'PN': 'Planetary Nebula', 'HII': 'HII Region', 'DrkN': 'Dark Nebula', 'EmN': 'Emission Nebula',
-    'Neb': 'Nebula', 'RfN': 'Reflection Nebula', 'SNR': 'Supernova Remnant', 'Nova': 'Nova',
-    '*': 'Star', '**': 'Double Star', '*Ass': 'Star Association', 'Other': 'Other',
+# --- GI750 catalog: a curated list of 750 deep-sky targets, each scored 1–5 ---
+# The list (id, name, score, RA, Dec, size, magnitude) ships as gi750.csv so this
+# script needs no spreadsheet. Coordinates/size/magnitude/score come from the CSV;
+# the object type and a common name are enriched from SIMBAD (best-effort).
+GI_TYPE = {
+    'G':'Galaxy','GiG':'Galaxy','GiC':'Galaxy','IG':'Galaxies','AGN':'Active Galaxy','Sy1':'Galaxy',
+    'Sy2':'Galaxy','SyG':'Galaxy','rG':'Galaxy','LIN':'Galaxy','SBG':'Galaxy','EmG':'Galaxy','H2G':'Galaxy',
+    'bCG':'Galaxy','GiP':'Galaxy Pair','PaG':'Galaxy Pair','ClG':'Galaxy Cluster','GrG':'Galaxy Group',
+    'CGG':'Compact Galaxy Group',
+    'GlC':'Globular Cluster','OpC':'Open Cluster','Cl*':'Star Cluster','As*':'Association',
+    'MGr':'Moving Group','Cl?':'Star Cluster','C?*':'Star Cluster',
+    'PN':'Planetary Nebula','PN?':'Planetary Nebula','SNR':'Supernova Remnant','SR?':'Supernova Remnant',
+    'HII':'Emission Nebula','RNe':'Reflection Nebula','DNe':'Dark Nebula','GNe':'Nebula','Neb':'Nebula',
+    'EmO':'Nebula','Cld':'Nebula','ISM':'Nebula','MoC':'Molecular Cloud','glb':'Dark Nebula',
+    'SFR':'Star Forming Region','HH':'Herbig-Haro Object','cor':'Dark Nebula','bub':'Nebula',
+    '*':'Star','**':'Double Star','V*':'Variable Star','WR*':'Wolf-Rayet Star',
 }
-OPENNGC_URLS = [
-    "https://raw.githubusercontent.com/mattiaverga/OpenNGC/master/database_files/NGC.csv",
-    "https://raw.githubusercontent.com/mattiaverga/OpenNGC/master/NGC.csv",
-]
-raw = None
-for url in OPENNGC_URLS:
+
+def simbad_type(ident):
+    """Best-effort (otype_label, common_name) from SIMBAD; (None, None) on failure."""
+    url = "https://simbad.cds.unistra.fr/simbad/sim-id?output.format=ASCII&Ident=" + urllib.parse.quote(ident)
     try:
-        raw = urllib.request.urlopen(url, timeout=60).read().decode('utf-8', 'replace')
-        print(f"Fetched OpenNGC from {url}")
-        break
-    except Exception as e:
-        print(f"  OpenNGC fetch failed ({url}): {e}")
+        txt = urllib.request.urlopen(url, timeout=12).read().decode('utf-8', 'replace')
+    except Exception:
+        return None, None
+    m = re.search(r'^Object\s+(.+?)\s+---\s+(\S+)', txt, re.M)
+    if not m:
+        return None, None
+    label = GI_TYPE.get(m.group(2).strip(), m.group(2).strip())
+    nm = [n.strip() for n in re.findall(r'NAME\s+([A-Za-z][\w\'\.\- ]*?)(?:\s{2,}|\n)', txt) if len(n.strip()) > 2]
+    return label, (nm[0] if nm else None)
 
-if raw:
-    lines = raw.splitlines()
-    idx = {h: i for i, h in enumerate(lines[0].split(';'))}
-    for line in lines[1:]:
-        cols = line.split(';')
-        if len(cols) <= idx['Dec']:
-            continue
-        name = cols[idx['Name']].strip()
-        if not name.startswith('NGC'):
-            continue
-        typ = cols[idx['Type']].strip()
-        if typ in ('Dup', 'NonEx', ''):
-            continue
-        ra_s, dec_s = cols[idx['RA']].strip(), cols[idx['Dec']].strip()
-        if not ra_s or not dec_s:
-            continue
+def _sexa_to_deg(s, is_ra):
+    sign = -1.0 if s.strip().startswith('-') else 1.0
+    parts = re.findall(r'[\d.]+', s)
+    a, m, sec = float(parts[0]), float(parts[1]), float(parts[2]) if len(parts) > 2 else 0.0
+    deg = a + m / 60 + sec / 3600
+    return round((deg * 15) if is_ra else (sign * deg), 5)
+
+GI750_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'gi750.csv')
+with open(GI750_CSV, newline='') as f:
+    for r in csv.DictReader(f):
+        name = r['name'].strip()
+        otype, common = simbad_type(name)
+        entry = {'id': 'GI' + str(int(r['id'])), 'cat': 'G', 'desig': name,
+                 'ra': _sexa_to_deg(r['ra'], True), 'dec': _sexa_to_deg(r['dec'], False),
+                 'otype': otype or 'Deep Sky', 'score': int(r['score'])}
         try:
-            c = SkyCoord(ra_s + ' ' + dec_s, unit=(u.hourangle, u.deg))
-        except Exception:
-            continue
-        m = re.match(r'(\d+)(.*)', name[3:])
-        if not m:
-            continue
-        label = 'NGC ' + str(int(m.group(1))) + m.group(2).strip()
-        entry = {'id': 'NGC' + str(int(m.group(1))) + m.group(2).strip(), 'cat': 'N',
-                 'desig': label, 'ra': round(c.ra.deg, 5), 'dec': round(c.dec.deg, 5),
-                 'otype': NGC_TYPE.get(typ, typ)}
-        try:
-            maj = cols[idx['MajAx']].strip()
-            if maj:
-                entry['size'] = round(float(maj), 1)
-        except Exception:
+            if r.get('size'):
+                entry['size'] = round(float(r['size']), 1)
+        except ValueError:
             pass
-        for col in ('V-Mag', 'B-Mag'):
-            v = cols[idx[col]].strip() if col in idx else ''
-            if v:
-                entry['mag'] = v
-                break
-        common = cols[idx['Common names']].strip() if 'Common names' in idx else ''
-        if common:
-            entry['common'] = common.split(',')[0].strip()
+        if r.get('mag'):
+            entry['mag'] = r['mag']
+        if common and common.lower() != name.lower():
+            entry['common'] = common
         catalog.append(entry)
+        print(f"{entry['id']}: {name} [{entry['otype']}] score {entry['score']}")
+        time.sleep(0.1)
 
-catalog = [o for o in catalog if o['dec'] >= MIN_DEC]   # northern-hemisphere only
+# Northern-hemisphere only — but GI750 is a hand-picked target list, so keep it whole.
+catalog = [o for o in catalog if o['cat'] == 'G' or o['dec'] >= MIN_DEC]
 with open(OUTPUT, 'w') as f:
     json.dump(catalog, f)
 print(f"\nWrote {len(catalog)} objects "
       f"({sum(1 for o in catalog if o['cat']=='M')} Messier, "
       f"{sum(1 for o in catalog if o['cat']=='C')} Caldwell, "
-      f"{sum(1 for o in catalog if o['cat']=='N')} NGC)")
+      f"{sum(1 for o in catalog if o['cat']=='G')} GI750)")
