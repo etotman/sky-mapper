@@ -15,6 +15,9 @@ for _stream in (sys.stdout, sys.stderr):
 
 OUTPUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'messier_caldwell.json')
 
+# Drop objects too far south to be observable from the northern hemisphere.
+MIN_DEC = -40.0
+
 # Caldwell number -> designation SIMBAD understands (Caldwell isn't a SIMBAD catalog).
 CALDWELL = {
  1:'NGC 188',2:'NGC 40',3:'NGC 4236',4:'NGC 7023',5:'IC 342',6:'NGC 6543',7:'NGC 2403',
@@ -155,6 +158,7 @@ if raw:
             entry['common'] = common.split(',')[0].strip()
         catalog.append(entry)
 
+catalog = [o for o in catalog if o['dec'] >= MIN_DEC]   # northern-hemisphere only
 with open(OUTPUT, 'w') as f:
     json.dump(catalog, f)
 print(f"\nWrote {len(catalog)} objects "

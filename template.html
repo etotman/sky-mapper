@@ -1,0 +1,1656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Astrophotography Sky Map</title>
+    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8"></script>
+    <style>
+        body { margin: 0; padding: 0; background-color: #111; color: white; font-family: sans-serif; }
+        #aladin-lite-div { width: 100vw; height: 100vh; }
+        #controls {
+            position: absolute; top: 90px; left: 10px; z-index: 100;
+            background: rgba(0,0,0,0.8); padding: 12px; border-radius: 6px;
+            min-width: 220px; max-height: calc(100vh - 110px); overflow-y: auto;
+        }
+        #controls h3 { margin: 0; font-size: 14px; }
+        #controls-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: move; touch-action: none; user-select: none; }
+        #controls-collapse { background: none; border: none; color: #aaa; cursor: pointer; font-size: 14px; padding: 0 4px; }
+        #controls-collapse:hover { color: white; }
+        #controls-body { margin-top: 6px; }
+        #controls p  { margin: 0 0 12px 0; font-size: 12px; color: #aaa; }
+        #legend { border-top: 1px solid #444; padding-top: 8px; font-size: 13px; }
+        .control-group { margin-bottom: 10px; }
+        .control-group label { display: block; font-size: 11px; color: #aaa; margin-bottom: 3px; }
+        .survey-select { width: 100%; background: #222; color: white; border: 1px solid #444; padding: 5px; border-radius: 4px; font-size: 12px; }
+        .search-container { display: flex; gap: 4px; }
+        .search-input { flex-grow: 1; background: #222; color: white; border: 1px solid #444; padding: 5px; border-radius: 4px; font-size: 12px; }
+        .search-btn { background: #444; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .search-btn:hover { background: #555; }
+        .checkbox-container { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 4px; cursor: pointer; color: white !important; }
+        .checkbox-container input { cursor: pointer; }
+        .legend-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-size: 13px; cursor: pointer; }
+        .legend-row .swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; flex-shrink: 0; }
+
+        #details-panel {
+            position: absolute; top: 46px; right: 10px; z-index: 150;
+            background: rgba(0,0,0,0.85); padding: 14px; border-radius: 6px;
+            width: 270px; max-height: calc(100vh - 56px); overflow-y: auto;
+            display: none; font-size: 13px; box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+        }
+        #details-panel h3 { margin: 0 0 6px 0; font-size: 16px; }
+        .details-close { float: right; cursor: pointer; color: #aaa; font-size: 14px; padding: 0 2px; }
+        .details-close:hover { color: white; }
+        .muted { color: #aaa; font-size: 12px; margin: 4px 0; }
+        .stat { margin: 8px 0; }
+        .badge { display: inline-block; background: #553300; color: #ffaa44; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 3px; margin-bottom: 4px; }
+        table.filters { width: 100%; border-collapse: collapse; font-size: 12px; margin: 6px 0; }
+        table.filters th { text-align: left; color: #888; font-weight: normal; border-bottom: 1px solid #444; padding: 2px 4px; }
+        table.filters td { padding: 2px 4px; border-bottom: 1px solid #2a2a2a; }
+
+        .ref-data { margin-top: 10px; border-top: 1px solid #444; padding-top: 8px; }
+        .ref-head { font-size: 12px; font-weight: bold; color: #cdd; margin-bottom: 4px; }
+        table.ref-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        table.ref-table td { padding: 2px 4px; border-bottom: 1px solid #2a2a2a; vertical-align: top; color: #ddd; }
+        table.ref-table td.rk { color: #8aa; white-space: nowrap; width: 38%; }
+        .ref-links { margin-top: 6px; font-size: 12px; }
+        .ref-links a { color: #6cf; text-decoration: none; }
+        .ref-links a:hover { text-decoration: underline; }
+
+        #toast {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(0, 150, 255, 0.9); color: white; padding: 10px 20px;
+            border-radius: 20px; font-size: 13px; font-weight: bold; z-index: 200;
+            opacity: 0; transition: opacity 0.3s ease; pointer-events: none;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        #folders {
+            position: absolute; z-index: 100;
+            background: rgba(0,0,0,0.8); padding: 12px; border-radius: 6px;
+            width: 300px; max-height: calc(100vh - 110px); overflow: hidden;
+            display: flex; flex-direction: column;
+        }
+        #folders-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: move; touch-action: none; user-select: none; flex-shrink: 0; }
+        #folders-header h3 { margin: 0; font-size: 14px; }
+        #folders-collapse { background: none; border: none; color: #aaa; cursor: pointer; font-size: 14px; padding: 0 4px; }
+        #folders-collapse:hover { color: white; }
+        #folders-body { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; overflow: hidden; }
+        #folders-tools { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 11px; color: #aaa; flex-shrink: 0; }
+        #folders-tools input[type=color] { width: 26px; height: 22px; padding: 0; border: 1px solid #444; background: #222; border-radius: 4px; cursor: pointer; }
+        #rescan-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 11px; color: #aaa; flex-shrink: 0; }
+        #rescan-bar .rescan-btn { background: #2a3a2a; border: 1px solid #3c5c3c; color: #cfe; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+        #rescan-bar .rescan-btn:hover { background: #345234; }
+        #rescan-bar .rescan-btn:disabled { opacity: 0.5; cursor: default; }
+        #folder-tree { flex: 1 1 auto; min-height: 0; overflow-y: auto; font-size: 12px; line-height: 1.7; }
+        .folder-row { display: flex; align-items: center; gap: 4px; white-space: nowrap; cursor: pointer; border-radius: 3px; padding: 0 2px; }
+        .folder-row:hover { background: rgba(255,255,255,0.08); }
+        .folder-row.selected { background: rgba(255,0,255,0.18); }
+        .folder-row.flash { animation: flashRow 2s ease-out; }
+        @keyframes flashRow { 0% { background: rgba(255,230,0,0.5); } 100% { background: transparent; } }
+        .folder-twirl { width: 12px; flex-shrink: 0; color: #888; text-align: center; }
+        .folder-name { overflow: hidden; text-overflow: ellipsis; }
+        .folder-count { color: #777; font-size: 10px; margin-left: 4px; flex-shrink: 0; }
+        .file-row .folder-name { color: #bcd; }
+        .file-icon { width: 12px; flex-shrink: 0; color: #668; text-align: center; font-size: 10px; }
+
+        #header-panel {
+            position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
+            z-index: 250; background: rgba(10,10,14,0.96); border: 1px solid #444;
+            border-radius: 6px; width: 540px; max-width: 92vw; max-height: 78vh;
+            display: none; flex-direction: column; box-shadow: 0 6px 24px rgba(0,0,0,0.7);
+        }
+        #header-panel-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #333; cursor: move; touch-action: none; user-select: none; flex-shrink: 0; }
+        #header-panel-bar .title { font-size: 13px; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #header-panel-close { background: none; border: none; color: #aaa; cursor: pointer; font-size: 16px; padding: 0 4px; flex-shrink: 0; }
+        #header-panel-close:hover { color: white; }
+        #header-panel pre { margin: 0; padding: 10px 12px; overflow: auto; font-size: 11px; line-height: 1.45; white-space: pre; color: #cdd; flex: 1 1 auto; min-height: 0; }
+
+        /* menu bar */
+        #menubar {
+            position: absolute; top: 0; left: 0; right: 0; z-index: 300; height: 36px;
+            display: flex; align-items: center; gap: 6px; padding: 0 10px;
+            background: rgba(0,0,0,0.85); border-bottom: 1px solid #333;
+        }
+        .menubar-title { font-size: 13px; font-weight: bold; margin-right: 8px; }
+        .menu-btn { background: #2b2b2b; color: #ccc; border: 1px solid #444; padding: 4px 10px;
+                    border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .menu-btn:hover { background: #3a3a3a; color: #fff; }
+        .menu-btn.active { background: #2a4a6a; border-color: #3a6a9a; color: #fff; }
+
+        /* generic draggable panel (stats/catalog/plan) */
+        .panel {
+            position: absolute; z-index: 140; display: none; flex-direction: column;
+            background: rgba(0,0,0,0.85); border: 1px solid #444; border-radius: 6px;
+            width: 320px; max-height: calc(100vh - 90px); box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+        }
+        .panel.open { display: flex; }
+        .panel-head { display: flex; align-items: center; justify-content: space-between;
+                      padding: 8px 12px; border-bottom: 1px solid #333; cursor: move;
+                      touch-action: none; user-select: none; flex-shrink: 0; }
+        .panel-head h3 { margin: 0; font-size: 14px; }
+        .panel-x { background: none; border: none; color: #aaa; cursor: pointer; font-size: 14px; }
+        .panel-x:hover { color: #fff; }
+        .panel-body { padding: 10px 12px; overflow-y: auto; font-size: 12px; }
+
+        /* statistics */
+        .stat-big { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; }
+        .stat-big .num { font-size: 20px; font-weight: bold; color: #cfe; }
+        .stat-big .lbl { font-size: 10px; color: #999; text-transform: uppercase; }
+        .stat-sec { font-size: 12px; font-weight: bold; color: #cdd; margin: 12px 0 4px; }
+        table.kv { width: 100%; border-collapse: collapse; }
+        table.kv td { padding: 2px 4px; border-bottom: 1px solid #2a2a2a; }
+        table.kv td.r { text-align: right; color: #9bd; white-space: nowrap; }
+        .bar { background: #2a3a55; height: 12px; border-radius: 2px; display: inline-block; vertical-align: middle; }
+        .barwrap { display: flex; align-items: center; gap: 6px; }
+
+        /* catalog */
+        .cat-toggles { display: flex; gap: 12px; margin-bottom: 8px; }
+        .cat-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+        .cat-tab { flex: 1; background: #2b2b2b; color: #ccc; border: 1px solid #444; padding: 4px 6px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .cat-tab:hover { background: #3a3a3a; }
+        .cat-tab.active { background: #2a4a6a; border-color: #3a6a9a; color: #fff; }
+        .cat-ctrls { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+        .cat-ctrls input[type=color] { width: 26px; height: 22px; padding: 0; border: 1px solid #444; background: #222; border-radius: 4px; cursor: pointer; }
+        .cat-prog { font-size: 12px; margin: 4px 0; }
+        .cat-prog .pct { color: #6f6; font-weight: bold; }
+        #catalog-list { max-height: 46vh; overflow-y: auto; }
+        .cat-row { display: flex; align-items: center; gap: 6px; padding: 1px 2px; cursor: pointer; border-radius: 3px; }
+        .cat-row:hover { background: rgba(255,255,255,0.08); }
+        .cat-row .ck { width: 14px; text-align: center; flex-shrink: 0; }
+        .cat-row.done { color: #7d7; }
+        .cat-row.todo { color: #999; }
+
+        /* plan */
+        #plan-alt { width: 100%; height: 120px; background: #0a0a12; border-radius: 4px; display: block; }
+    </style>
+</head>
+<body>
+    <div id="menubar">
+        <span class="menubar-title">🔭 Sky Map</span>
+        <button class="menu-btn" data-panel="controls">Controls</button>
+        <button class="menu-btn" data-panel="folders">Folders</button>
+        <button class="menu-btn" data-panel="stats">Statistics</button>
+        <button class="menu-btn" data-panel="catalog">Catalog</button>
+        <button class="menu-btn" id="plan-mode-btn" title="When on, clicking empty sky opens a planning popup for that point">Plan mode</button>
+        <button class="menu-btn" id="poster-btn" title="Download the current map view as a PNG">Export poster</button>
+    </div>
+
+    <div id="controls">
+        <div id="controls-header" title="Drag to move · click to collapse/expand">
+            <h3>Astrophotography Archive Map</h3>
+            <button id="controls-collapse">▾</button>
+        </div>
+        <div id="controls-body">
+        <p id="target-count"></p>
+
+        <div class="control-group">
+            <label>Search Target (e.g. 6044, abell 39, M42):</label>
+            <div class="search-container">
+                <input type="text" id="search-box" class="search-input" placeholder="Go to target...">
+                <button id="search-submit" class="search-btn">Go</button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Background Survey:</label>
+            <select id="survey-selector" class="survey-select">
+                <option value="P/DSS2/color">DSS2 Color (Global Optical)</option>
+                <option value="P/DSS2/red">DSS2 Red (Best H-Alpha Nebula Contrast)</option>
+                <option value="CDS/P/DESI-Legacy-Surveys/DR10/color">DESI Legacy DR10 (Ultra High-Res Galaxy/Deep Sky)</option>
+                <option value="CDS/P/PanSTARRS/DR1/color-i-r-g">PanSTARRS DR1 Color (High-Res Northern Sky)</option>
+                <option value="P/Mellinger/color">Mellinger All-Sky Optical (Wide-Field/Milky Way)</option>
+                <option value="CDS/P/Finkbeiner">Finkbeiner H-Alpha (Global 100% Full Sky Nebula)</option>
+                <option value="P/2MASS/color">2MASS Infrared (Star Crowding Reducer)</option>
+                <option value="P/allWISE/color">AllWISE Infrared (Dust & Gas Profiles)</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label class="checkbox-container">
+                <input type="checkbox" id="grid-toggle"> RA/DEC grid lines
+            </label>
+            <label class="checkbox-container">
+                <input type="checkbox" id="constellation-toggle"> Constellation lines
+            </label>
+            <label class="checkbox-container">
+                <input type="checkbox" id="mosaic-toggle" checked> Show mosaic frames
+            </label>
+            <label class="checkbox-container" title="Draws an outline around the part of the sky that rises above the minimum altitude during darkness tonight. Site location comes from your image headers (or the Python script).">
+                <input type="checkbox" id="tonight-toggle"> Outline sky available tonight
+            </label>
+            <label class="checkbox-container" title="Mirror the map east–west">
+                <input type="checkbox" id="flip-h-toggle"> Flip horizontal
+            </label>
+            <label class="checkbox-container" title="Mirror the map north–south">
+                <input type="checkbox" id="flip-v-toggle"> Flip vertical
+            </label>
+        </div>
+
+        <div id="legend"></div>
+
+        <button id="export-csv" class="search-btn" style="width:100%;margin-top:10px;">Export target list (CSV)</button>
+        </div>
+    </div>
+
+    <div id="folders">
+        <div id="folders-header" title="Drag to move · click to collapse/expand">
+            <h3>Image Folders</h3>
+            <button id="folders-collapse">▾</button>
+        </div>
+        <div id="folders-body">
+            <div id="folders-tools">
+                <span title="Outline color for highlighted folders">Highlight:</span>
+                <input type="color" id="highlight-color">
+                <button id="folders-clear" class="search-btn" style="padding:3px 8px;">Clear</button>
+                <button id="tree-collapse" class="search-btn" style="padding:3px 8px;" title="Collapse all folders">Collapse</button>
+            </div>
+            <div id="rescan-bar" title="Re-scan disk for added/deleted files, then rebuild the map"></div>
+            <div id="folder-tree"></div>
+        </div>
+    </div>
+
+    <div id="header-panel">
+        <div id="header-panel-bar">
+            <span class="title" id="header-panel-title"></span>
+            <button id="header-panel-close" title="Close">✕</button>
+        </div>
+        <pre id="header-panel-pre"></pre>
+    </div>
+
+    <div id="stats" class="panel">
+        <div class="panel-head" data-drag="stats"><h3>Statistics</h3><button class="panel-x" data-panel="stats">✕</button></div>
+        <div class="panel-body" id="stats-body"></div>
+    </div>
+
+    <div id="catalog" class="panel">
+        <div class="panel-head" data-drag="catalog"><h3>Catalog completion</h3><button class="panel-x" data-panel="catalog">✕</button></div>
+        <div class="panel-body" id="catalog-body"></div>
+    </div>
+
+    <div id="plan" class="panel">
+        <div class="panel-head" data-drag="plan"><h3>Plan point</h3><button class="panel-x" data-panel="plan">✕</button></div>
+        <div class="panel-body" id="plan-body"></div>
+    </div>
+
+    <div id="details-panel"></div>
+    <div id="toast"></div>
+    <div id="aladin-lite-div"></div>
+
+    <script type="text/javascript">
+        const DATA = __DATA_JSON__;
+        const FOLDERS = __FOLDERS_JSON__;
+        const STATS = __STATS_JSON__;
+        const SETTINGS = __SETTINGS_JSON__;
+
+        // --- USER-DEFINED SEARCH ALIASES ---
+        const ALIASES = {
+            'abell 39': 'PN A66 39',
+            'abell 33': 'PN A66 33'
+        };
+
+        const TONIGHT_COLOR = '#ffaa00';
+        const LS_KEY = 'sky_mapper_ui_v2';
+
+        A.init.then(() => {
+            console.log("✅ Aladin Lite initialized");
+
+            const aladin = A.aladin('#aladin-lite-div', {
+                survey: "P/DSS2/color",
+                fov: SETTINGS.initialFov,
+                showReticle: true,
+                showZoomControl: true,
+                showFullscreenControl: true,
+                showCooGrid: false
+            });
+            aladin.gotoRaDec(SETTINGS.initialRa, SETTINGS.initialDec);
+            window.aladin = aladin;   // console access for debugging
+
+            const els = {
+                grid:           document.getElementById('grid-toggle'),
+                constellations: document.getElementById('constellation-toggle'),
+                mosaics:        document.getElementById('mosaic-toggle'),
+                tonight:        document.getElementById('tonight-toggle'),
+                flipH:          document.getElementById('flip-h-toggle'),
+                flipV:          document.getElementById('flip-v-toggle'),
+                survey:         document.getElementById('survey-selector'),
+                count:          document.getElementById('target-count'),
+                panel:          document.getElementById('details-panel'),
+            };
+
+            // ---------- small helpers ----------
+            const esc = s => String(s).replace(/[&<>"]/g,
+                ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+
+            let toastTimer = null;
+            function toastMsg(msg) {
+                const t = document.getElementById('toast');
+                t.innerText = msg;
+                t.style.opacity = '1';
+                clearTimeout(toastTimer);
+                toastTimer = setTimeout(() => { t.style.opacity = '0'; }, 2200);
+            }
+
+            function fmtExposure(sec) {
+                if (!sec) return '—';
+                const h = Math.floor(sec / 3600);
+                const m = Math.round((sec % 3600) / 60);
+                return h ? h + 'h ' + String(m).padStart(2, '0') + 'm' : m + 'm';
+            }
+            function raToHms(ra) {
+                const totalH = ra / 15;
+                const h = Math.floor(totalH);
+                const m = Math.floor((totalH - h) * 60);
+                const s = ((totalH - h) * 60 - m) * 60;
+                return h + 'h ' + String(m).padStart(2, '0') + 'm ' + String(Math.round(s)).padStart(2, '0') + 's';
+            }
+            function decToDms(dec) {
+                const sign = dec < 0 ? '-' : '+';
+                const a = Math.abs(dec);
+                const d = Math.floor(a);
+                const m = Math.floor((a - d) * 60);
+                const s = ((a - d) * 60 - m) * 60;
+                return sign + d + '° ' + String(m).padStart(2, '0') + "' " + String(Math.round(s)).padStart(2, '0') + '"';
+            }
+
+            // ---------- per-rig layers (plus one gray layer for dimmed targets) ----------
+            const layers = {};
+            for (const color of [...new Set(DATA.clusters.map(c => c.color))]) {
+                const overlay = A.graphicOverlay({ color: color, lineWidth: 2 });
+                aladin.addOverlay(overlay);
+                const catalog = A.catalog({
+                    name: 'Labels ' + color, sourceSize: 0, color: color,
+                    displayLabel: true, labelColumn: 'name',
+                    labelColor: color, labelFont: 'bold 15px sans-serif'
+                });
+                aladin.addCatalog(catalog);
+                layers[color] = { overlay: overlay, catalog: catalog };
+            }
+            function clearLayer(l) {
+                for (const part of [l.overlay, l.catalog]) {
+                    if (part && typeof part.removeAll === 'function') part.removeAll();
+                }
+            }
+
+            // ---------- rig legend with show/hide checkboxes ----------
+            const rigEnabled = {}, rigCheckboxes = {};
+            const legendDiv = document.getElementById('legend');
+            for (const rig of DATA.rigs) {
+                rigEnabled[rig.color] = true;
+                const row = document.createElement('label');
+                row.className = 'legend-row';
+                row.innerHTML = '<input type="checkbox" checked> <span class="swatch" style="background:'
+                    + rig.color + '"></span> <span>' + esc(rig.label) + '</span>';
+                const cb = row.querySelector('input');
+                cb.addEventListener('change', () => {
+                    rigEnabled[rig.color] = cb.checked;
+                    saveState();
+                    rebuild();
+                });
+                rigCheckboxes[rig.color] = cb;
+                legendDiv.appendChild(row);
+            }
+
+            // ---------- "imageable tonight" altitude math ----------
+            const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+            function julianDate(d) { return d.getTime() / 86400000 + 2440587.5; }
+            function gmstDeg(jd) {
+                const d = jd - 2451545.0;
+                return (((280.46061837 + 360.98564736629 * d) % 360) + 360) % 360;
+            }
+            function sunRaDec(jd) {
+                const n = jd - 2451545.0;
+                const L = (280.460 + 0.9856474 * n) % 360;
+                const g = ((357.528 + 0.9856003 * n) % 360) * D2R;
+                const lam = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * D2R;
+                const eps = (23.439 - 0.0000004 * n) * D2R;
+                return {
+                    ra: ((Math.atan2(Math.cos(eps) * Math.sin(lam), Math.cos(lam)) * R2D) + 360) % 360,
+                    dec: Math.asin(Math.sin(eps) * Math.sin(lam)) * R2D
+                };
+            }
+            function altDeg(raDeg, decDeg, jd) {
+                const ha = (gmstDeg(jd) + SETTINGS.lon - raDeg) * D2R;
+                const lat = SETTINGS.lat * D2R, dec = decDeg * D2R;
+                return Math.asin(Math.sin(lat) * Math.sin(dec)
+                     + Math.cos(lat) * Math.cos(dec) * Math.cos(ha)) * R2D;
+            }
+            function darkWindowJDs() {
+                // Tonight = local noon to local noon. Sample every 10 min, keep
+                // times when the sun is below -18° (fallback -12°).
+                const start = new Date();
+                start.setHours(12, 0, 0, 0);
+                if (Date.now() < start.getTime()) start.setDate(start.getDate() - 1);
+                const astro = [], nautical = [];
+                for (let m = 0; m < 24 * 60; m += 10) {
+                    const jd = julianDate(new Date(start.getTime() + m * 60000));
+                    const s = sunRaDec(jd);
+                    const alt = altDeg(s.ra, s.dec, jd);
+                    if (alt < -18) astro.push(jd);
+                    if (alt < -12) nautical.push(jd);
+                }
+                if (!astro.length && nautical.length) toastMsg('No astronomical dark tonight — using nautical twilight');
+                return astro.length ? astro : nautical;
+            }
+
+            // The sky available tonight is the union of "altitude ≥ minAlt" caps
+            // (radius 90−minAlt around the zenith) as the zenith sweeps along
+            // dec = site latitude from dusk LST to dawn LST. Its boundary is a
+            // single closed contour when a celestial pole lies inside the region
+            // (true whenever |lat| ≥ 90 − capRadius, e.g. lat ≥ 30° for a 30°
+            // altitude limit) — that is the case drawn here.
+            let tonightOverlay = null;
+            function ensureTonightOutline() {
+                if (tonightOverlay) { tonightOverlay.show(); return; }
+                const win = darkWindowJDs();
+                if (!win.length) {
+                    toastMsg('No darkness tonight at your site');
+                    els.tonight.checked = false;
+                    return;
+                }
+                const lst0 = ((gmstDeg(win[0]) + SETTINGS.lon) % 360 + 360) % 360;
+                const lst1 = ((gmstDeg(win[win.length - 1]) + SETTINGS.lon) % 360 + 360) % 360;
+                const sweep = ((lst1 - lst0) % 360 + 360) % 360;
+                const capR = 90 - SETTINGS.minAlt;
+                const poleSign = SETTINGS.lat >= 0 ? 1 : -1;
+                const phi = SETTINGS.lat * D2R;
+                const cosR = Math.cos(capR * D2R);
+
+                // Southernmost (north sites) / northernmost (south sites) dec where
+                // the cap centred (deltaRA away from the zenith track end) crosses
+                // this meridian: solve sinφ·sinδ + cosφ·cosΔα·cosδ = cos(capR).
+                function capEdgeDec(deltaRaDeg) {
+                    const Ac = Math.sin(phi);
+                    const Bc = Math.cos(phi) * Math.cos(deltaRaDeg * D2R);
+                    const Rm = Math.sqrt(Ac * Ac + Bc * Bc);
+                    if (Rm < 1e-9 || Math.abs(cosR / Rm) > 1) return null;
+                    const psi = Math.atan2(Bc, Ac);
+                    const sols = [Math.asin(cosR / Rm) - psi, Math.PI - Math.asin(cosR / Rm) - psi]
+                        .filter(d => d >= -Math.PI / 2 && d <= Math.PI / 2)
+                        .map(d => d * R2D);
+                    if (!sols.length) return null;
+                    return poleSign > 0 ? Math.min(...sols) : Math.max(...sols);
+                }
+
+                const pts = [];
+                for (let a = 0; a <= 360; a += 2) {
+                    const off = ((a - lst0) % 360 + 360) % 360;
+                    let dec;
+                    if (off <= sweep) {
+                        dec = SETTINGS.lat - poleSign * capR;
+                    } else {
+                        const offEnd = ((a - lst1) % 360 + 360) % 360;
+                        const cand = [
+                            capEdgeDec(Math.min(off, 360 - off)),
+                            capEdgeDec(Math.min(offEnd, 360 - offEnd)),
+                        ].filter(v => v !== null);
+                        dec = cand.length
+                            ? (poleSign > 0 ? Math.min(...cand) : Math.max(...cand))
+                            : poleSign * 89.9;
+                    }
+                    pts.push([a, Math.max(-89.9, Math.min(89.9, dec))]);
+                }
+                pts[pts.length - 1] = [360, pts[0][1]];
+
+                tonightOverlay = A.graphicOverlay({ color: TONIGHT_COLOR, lineWidth: 3 });
+                aladin.addOverlay(tonightOverlay);
+                tonightOverlay.add(A.polyline(pts, { color: TONIGHT_COLOR, lineWidth: 3 }));
+
+                // Thin dashed meridian at local midnight: the hour circle (constant
+                // RA = local sidereal time at 00:00) — objects near it transit ~midnight.
+                const mstart = new Date(); mstart.setHours(12, 0, 0, 0);
+                if (Date.now() < mstart.getTime()) mstart.setDate(mstart.getDate() - 1);
+                const jdMid = julianDate(new Date(mstart.getTime() + 12 * 3600 * 1000));
+                const lstMid = ((gmstDeg(jdMid) + SETTINGS.lon) % 360 + 360) % 360;
+                // dashed = short segments with gaps (Aladin ignores per-shape lineDash)
+                for (let d = -87; d < 87; d += 6) {
+                    tonightOverlay.add(A.polyline([[lstMid, d], [lstMid, d + 3]],
+                        { color: TONIGHT_COLOR, lineWidth: 1 }));
+                }
+
+                toastMsg('Orange: sky above ' + SETTINGS.minAlt + '° tonight; dashed line = midnight meridian');
+            }
+
+            // ---------- (re)draw all footprints + labels from current UI state ----------
+            function clusterVisible(c) {
+                if (rigEnabled[c.color] === false) return false;
+                if (c.mosaic && !els.mosaics.checked) return false;
+                return true;
+            }
+            function rebuild() {
+                for (const l of Object.values(layers)) clearLayer(l);
+                let shown = 0;
+                for (const c of DATA.clusters) {
+                    if (!clusterVisible(c)) continue;
+                    const layer = layers[c.color];
+                    layer.overlay.addFootprints([A.polygon(c.corners)]);
+                    layer.catalog.addSources([A.source(c.ra, c.label_dec, { name: c.label, cid: c.id })]);
+                    shown++;
+                }
+                els.count.innerText = 'Showing ' + shown + ' of ' + DATA.clusters.length + ' targets';
+            }
+
+            // ---------- label declutter: hide labels when zoomed way out ----------
+            function updateLabelVisibility() {
+                let fov = SETTINGS.initialFov;
+                try { fov = aladin.getFov()[0]; } catch (e) {}
+                const hide = fov > SETTINGS.labelHideFov;
+                for (const l of Object.values(layers)) {
+                    try { hide ? l.catalog.hide() : l.catalog.show(); } catch (e) {}
+                }
+            }
+            try { aladin.on('zoomChanged', updateLabelVisibility); } catch (e) {}
+
+            // ---------- details panel ----------
+            function findClusterAt(ra, dec) {
+                let best = null, bestArea = Infinity;
+                for (const c of DATA.clusters) {
+                    if (!clusterVisible(c)) continue;
+                    const r = c.rect;
+                    if (dec < r[2] || dec > r[3]) continue;
+                    const width = r[1] - r[0];
+                    const delta = (((ra - r[0]) % 360) + 360) % 360;   // RA-wrap safe
+                    if (delta > width) continue;
+                    const area = width * (r[3] - r[2]);
+                    if (area < bestArea) { best = c; bestArea = area; }
+                }
+                return best;
+            }
+            function hideDetails() { els.panel.style.display = 'none'; }
+            function showDetails(c) {
+                const rows = Object.entries(c.filters)
+                    .sort((a, b) => b[1].seconds - a[1].seconds)
+                    .map(([f, v]) => '<tr><td>' + esc(f) + '</td><td>' + v.frames + '</td><td>'
+                                   + fmtExposure(v.seconds) + '</td></tr>')
+                    .join('');
+                const dates = c.date_min
+                    ? (c.date_min === c.date_max ? c.date_min : c.date_min + ' → ' + c.date_max)
+                    : 'unknown';
+                els.panel.innerHTML =
+                    '<span class="details-close" title="Close">✕</span>' +
+                    '<h3 style="color:' + c.color + '">' + esc(c.name) + '</h3>' +
+                    (c.mosaic ? '<span class="badge">MOSAIC</span>' : '') +
+                    (c.alt_names.length ? '<div class="muted">also: ' + esc(c.alt_names.join(', ')) + '</div>' : '') +
+                    '<div class="stat"><b>' + c.count + '</b> frames · <b>' + fmtExposure(c.total_seconds) + '</b> total</div>' +
+                    '<table class="filters"><tr><th>Filter</th><th>Frames</th><th>Time</th></tr>' + rows + '</table>' +
+                    '<div class="muted">Dates: ' + esc(dates) + '</div>' +
+                    (c.rigs.length ? '<div class="muted">Rig: ' + esc(c.rigs.join(', ')) + '</div>' : '') +
+                    '<div class="muted">' + raToHms(c.ra) + '   ' + decToDms(c.dec) + '</div>' +
+                    '<button class="search-btn goto-btn" style="margin-top:8px;width:100%;">Center on target</button>' +
+                    '<canvas id="det-alt" style="width:100%;height:90px;margin-top:8px;display:none;"></canvas>' +
+                    '<div id="det-alt-info" class="muted"></div>' +
+                    '<div id="ref-data" class="ref-data muted">Loading reference data…</div>';
+                els.panel.dataset.cid = c.id;
+                els.panel.querySelector('.details-close').addEventListener('click', hideDetails);
+                els.panel.querySelector('.goto-btn').addEventListener('click', () => {
+                    aladin.gotoRaDec(c.ra, c.dec);
+                    aladin.setFov(4);
+                });
+                els.panel.style.display = 'block';
+                if (SETTINGS.lat !== null) {
+                    const cv = document.getElementById('det-alt');
+                    cv.style.display = 'block'; cv.width = cv.clientWidth || 240; cv.height = 90;
+                    const r = altitudeCurve(cv, c.ra, c.dec);
+                    if (r) document.getElementById('det-alt-info').innerText =
+                        'Max altitude tonight ' + r.maxAlt + '° at ' + hhmm(r.maxTime);
+                }
+                loadReferenceData(c);
+            }
+
+            // ---------- object reference data (SIMBAD via /api/objectinfo) ----------
+            function refRow(label, value) {
+                return value ? '<tr><td class="rk">' + esc(label) + '</td><td>' + value + '</td></tr>' : '';
+            }
+            function renderRefData(c, info) {
+                const box = els.panel.querySelector('#ref-data');
+                if (!box || els.panel.dataset.cid != c.id) return;   // panel moved on
+                if (!info || !info.ok) { box.textContent = 'Reference data unavailable.'; return; }
+
+                let rows = '';
+                if (info.resolved) {
+                    let typ = esc(info.otype || info.otype_code || '');
+                    if (info.morph) typ += ' <span style="color:#888">(' + esc(info.morph) + ')</span>';
+                    rows += refRow('Type', typ);
+                    rows += refRow('Constellation', esc(info.constellation || ''));
+                    if (info.mag) {
+                        const m = ['V', 'B'].filter(b => info.mag[b]).map(b => b + ' ' + esc(info.mag[b])).join(', ');
+                        rows += refRow('Magnitude', m);
+                    }
+                    rows += refRow('Apparent size', esc(info.size || ''));
+                    rows += refRow('Distance', esc(info.distance || ''));
+                    rows += refRow('Redshift', info.z ? esc(info.z) : '');
+                    rows += refRow('Radial vel.', info.rv ? esc(info.rv) + ' km/s' : '');
+                    if (info.common && info.common.length)
+                        rows += refRow('Also known as', esc(info.common.join(', ')));
+                    rows += refRow('SIMBAD id', esc(info.main_id || ''));
+                } else {
+                    rows += refRow('Constellation', esc(info.constellation || ''));
+                    rows += '<tr><td colspan="2" style="color:#888">Not resolved by SIMBAD' +
+                            ' — try the links below.</td></tr>';
+                }
+                const links = [];
+                if (info.simbad_url) links.push('<a href="' + info.simbad_url + '" target="_blank" rel="noopener">SIMBAD</a>');
+                if (info.ned_url) links.push('<a href="' + info.ned_url + '" target="_blank" rel="noopener">NED</a>');
+
+                box.innerHTML =
+                    '<div class="ref-head">Reference data</div>' +
+                    '<table class="ref-table">' + rows + '</table>' +
+                    (links.length ? '<div class="ref-links">More: ' + links.join(' · ') + '</div>' : '');
+            }
+            async function loadReferenceData(c) {
+                // reuse the search-box aliases (e.g. Abell 39 → the planetary nebula PN A66 39,
+                // not the galaxy cluster SIMBAD returns for "Abell 39")
+                const qName = ALIASES[(c.name || '').trim().toLowerCase()] || c.name;
+                try {
+                    const resp = await fetch('/api/objectinfo?name=' + encodeURIComponent(qName) +
+                                             '&ra=' + c.ra + '&dec=' + c.dec);
+                    renderRefData(c, await resp.json());
+                } catch (e) {
+                    const box = els.panel.querySelector('#ref-data');
+                    if (box && els.panel.dataset.cid == c.id) box.textContent = 'Reference data unavailable.';
+                }
+            }
+
+            // ---------- map click: open details, or plan popup in plan mode ----------
+            aladin.on('click', (object) => {
+                if (!object || object.ra === undefined || object.dec === undefined) return;
+                const c = findClusterAt(object.ra, object.dec);
+                if (c) { showDetails(c); }
+                else { hideDetails(); if (planMode) openPlanPopup(object.ra, object.dec); }
+                revealFoldersAt(object.ra, object.dec);
+            });
+
+            // ---------- constellation lines (lazy-loaded) ----------
+            let constellationOverlay = null;
+            async function ensureConstellations() {
+                if (constellationOverlay) { constellationOverlay.show(); return; }
+                let data = null;
+                for (const url of [SETTINGS.constellationLocal, SETTINGS.constellationUrl]) {
+                    if (!url) continue;
+                    try {
+                        const resp = await fetch(url);
+                        if (resp.ok) { data = await resp.json(); break; }
+                    } catch (e) { /* try next source */ }
+                }
+                if (!data || !data.features) {
+                    toastMsg('Could not load constellation data');
+                    els.constellations.checked = false;
+                    return;
+                }
+                constellationOverlay = A.graphicOverlay({ color: '#557788', lineWidth: 1 });
+                aladin.addOverlay(constellationOverlay);
+                for (const feat of data.features) {
+                    const geom = feat.geometry;
+                    if (!geom) continue;
+                    const lines = geom.type === 'MultiLineString' ? geom.coordinates : [geom.coordinates];
+                    for (const line of lines) {
+                        let seg = [], prevRa = null;
+                        for (const pt of line) {
+                            const ra = ((pt[0] % 360) + 360) % 360;
+                            // break polylines that jump across the RA 0/360 seam
+                            if (prevRa !== null && Math.abs(ra - prevRa) > 180) {
+                                if (seg.length > 1) constellationOverlay.add(A.polyline(seg, { color: '#557788', lineWidth: 1 }));
+                                seg = [];
+                            }
+                            seg.push([ra, pt[1]]);
+                            prevRa = ra;
+                        }
+                        if (seg.length > 1) constellationOverlay.add(A.polyline(seg, { color: '#557788', lineWidth: 1 }));
+                    }
+                }
+                if (!els.constellations.checked) constellationOverlay.hide();
+                console.log('✅ Constellation lines loaded');
+            }
+
+            // ---------- CSV export ----------
+            document.getElementById('export-csv').addEventListener('click', () => {
+                const rows = [['name', 'ra_deg', 'dec_deg', 'ra_hms', 'dec_dms', 'frames',
+                               'integration_hours', 'filters', 'mosaic', 'rigs', 'first_date', 'last_date']];
+                for (const c of DATA.clusters) {
+                    const filters = Object.entries(c.filters)
+                        .map(([f, v]) => f + ': ' + fmtExposure(v.seconds)).join('; ');
+                    rows.push([c.name, c.ra.toFixed(5), c.dec.toFixed(5), raToHms(c.ra), decToDms(c.dec),
+                               c.count, (c.total_seconds / 3600).toFixed(2), filters,
+                               c.mosaic ? 'yes' : 'no', c.rigs.join('; '),
+                               c.date_min || '', c.date_max || '']);
+                }
+                const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'sky_targets.csv';
+                a.click();
+                URL.revokeObjectURL(a.href);
+                toastMsg('Exported ' + DATA.clusters.length + ' targets');
+            });
+
+            // ---------- search with auto-prefix and aliases ----------
+            const executeSearch = () => {
+                let query = document.getElementById('search-box').value.trim().toLowerCase();
+                if (!query) return;
+                if (/^\d+$/.test(query)) {
+                    query = "ngc " + query;
+                }
+                query = ALIASES[query] || query;
+                aladin.gotoObject(query, {
+                    error: () => console.log("⚠ Could not resolve target: " + query)
+                });
+            };
+            document.getElementById('search-submit').addEventListener('click', executeSearch);
+            document.getElementById('search-box').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') executeSearch();
+            });
+
+            // ---------- collapsible, draggable control panel ----------
+            const controls = document.getElementById('controls');
+            const controlsBody = document.getElementById('controls-body');
+            const controlsHeader = document.getElementById('controls-header');
+            const collapseBtn = document.getElementById('controls-collapse');
+            function setCollapsed(collapsed) {
+                controlsBody.style.display = collapsed ? 'none' : 'block';
+                collapseBtn.innerText = collapsed ? '▸' : '▾';
+            }
+            function placePanel(x, y) {
+                x = Math.max(0, Math.min(x, window.innerWidth - 80));
+                y = Math.max(0, Math.min(y, window.innerHeight - 40));
+                controls.style.left = x + 'px';
+                controls.style.top = y + 'px';
+                controls.style.maxHeight = (window.innerHeight - y - 20) + 'px';
+            }
+            placePanel(SETTINGS.panelX, SETTINGS.panelY);
+
+            // Drag by the title bar; a press that barely moves counts as a
+            // collapse/expand click instead.
+            let drag = null;
+            controlsHeader.addEventListener('pointerdown', (e) => {
+                drag = { x0: e.clientX, y0: e.clientY,
+                         left: controls.offsetLeft, top: controls.offsetTop, moved: false };
+                try { controlsHeader.setPointerCapture(e.pointerId); } catch (err) {}
+                e.preventDefault();
+            });
+            controlsHeader.addEventListener('pointermove', (e) => {
+                if (!drag) return;
+                const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
+                if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+                if (drag.moved) placePanel(drag.left + dx, drag.top + dy);
+            });
+            controlsHeader.addEventListener('pointerup', () => {
+                if (!drag) return;
+                const moved = drag.moved;
+                drag = null;
+                if (!moved) setCollapsed(controlsBody.style.display !== 'none');
+                saveState();
+            });
+
+            // ---------- control wiring ----------
+            els.grid.addEventListener('change', (e) => {
+                if (e.target.checked) aladin.showCooGrid(); else aladin.hideCooGrid();
+                saveState();
+            });
+            els.survey.addEventListener('change', (e) => {
+                aladin.setBaseImageLayer(aladin.createImageSurvey(e.target.value));
+                saveState();
+            });
+            els.constellations.addEventListener('change', (e) => {
+                if (e.target.checked) ensureConstellations();
+                else if (constellationOverlay) constellationOverlay.hide();
+                saveState();
+            });
+            els.mosaics.addEventListener('change', () => { saveState(); rebuild(); });
+            // A vertical mirror = horizontal mirror + 180° rotation, so the two
+            // checkboxes combine into a longitude-reverse plus optional rotation.
+            // setRotation(0) is rejected as falsy by Aladin, hence 360 for upright.
+            function applyFlips() {
+                aladin.reverseLongitude(els.flipH.checked !== els.flipV.checked);
+                aladin.setRotation(els.flipV.checked ? 180 : 360);
+            }
+            els.flipH.addEventListener('change', () => { applyFlips(); saveState(); });
+            els.flipV.addEventListener('change', () => { applyFlips(); saveState(); });
+            els.tonight.addEventListener('change', () => {
+                if (els.tonight.checked && SETTINGS.lat === null) {
+                    toastMsg('No site location — set OBSERVER_LAT/LON in the script');
+                    els.tonight.checked = false;
+                    return;
+                }
+                if (els.tonight.checked) ensureTonightOutline();
+                else if (tonightOverlay) tonightOverlay.hide();
+                saveState();
+            });
+
+            // ---------- folder browser: click a folder to outline its frames ----------
+            const treeDiv = document.getElementById('folder-tree');
+            const colorInput = document.getElementById('highlight-color');
+            const foldersPanel = document.getElementById('folders');
+            const foldersBody = document.getElementById('folders-body');
+            const foldersHeader = document.getElementById('folders-header');
+            const foldersCollapseBtn = document.getElementById('folders-collapse');
+            colorInput.value = SETTINGS.highlightColor;
+
+            const tree = FOLDERS.tree;
+            const kids = {};
+            tree.forEach((n, id) => { (kids[n.parent] = kids[n.parent] || []).push(id); });
+            for (const k in kids) kids[k].sort((a, b) => tree[a].label.localeCompare(tree[b].label));
+            const roots = (kids['null'] || []).slice();
+
+            // Auto-expand the rig roots only when there's a single rig; with
+            // several, start collapsed so every rig is visible at the top.
+            const expanded = new Set(roots.length === 1 ? roots : []);
+            const selected = new Set();           // selected folder node ids
+            const selectedFiles = new Map();      // file path -> footprint index
+
+            const highlightOverlay = A.graphicOverlay({ color: SETTINGS.highlightColor, lineWidth: 3 });
+            aladin.addOverlay(highlightOverlay);
+
+            function subtreeFps(id, out) {
+                for (const f of tree[id].fp) out.add(f);
+                for (const c of (kids[id] || [])) subtreeFps(c, out);
+            }
+            function forceRedraw() {
+                // removeAll() alone doesn't repaint an emptied overlay, so the map
+                // would keep showing cleared outlines — nudge Aladin to redraw.
+                try { aladin.view.requestRedraw(); }
+                catch (e) { try { aladin.view.forceRedraw(); } catch (e2) {} }
+            }
+            function refreshHighlights() {
+                highlightOverlay.removeAll();
+                const col = colorInput.value;
+                const out = new Set();
+                for (const id of selected) subtreeFps(id, out);
+                for (const fp of selectedFiles.values()) out.add(fp);
+                for (const idx of out) {
+                    const c = FOLDERS.footprints[idx];
+                    highlightOverlay.add(A.polyline([...c, c[0]], { color: col, lineWidth: 3 }));
+                }
+                forceRedraw();
+            }
+            function centerOnFolder(id) {
+                const out = new Set();
+                subtreeFps(id, out);
+                if (!out.size) return;
+                let x = 0, y = 0, z = 0, n = 0;
+                for (const idx of out) {
+                    const c = FOLDERS.footprints[idx];
+                    const ra = (c[0][0] + c[1][0] + c[2][0] + c[3][0]) / 4 * Math.PI / 180;
+                    const dec = (c[0][1] + c[1][1] + c[2][1] + c[3][1]) / 4 * Math.PI / 180;
+                    x += Math.cos(dec) * Math.cos(ra); y += Math.cos(dec) * Math.sin(ra); z += Math.sin(dec); n++;
+                }
+                const ra = ((Math.atan2(y, x) * 180 / Math.PI) % 360 + 360) % 360;
+                const dec = Math.asin(z / Math.sqrt(x * x + y * y + z * z)) * 180 / Math.PI;
+                aladin.gotoRaDec(ra, dec);
+                try { if (aladin.getFov()[0] > 20) aladin.setFov(8); } catch (e) {}
+            }
+
+            function renderNode(id, depth, frag) {
+                const n = tree[id];
+                const row = document.createElement('div');
+                row.className = 'folder-row' + (selected.has(id) ? ' selected' : '');
+                row.dataset.nodeId = id;
+                row.style.paddingLeft = (depth * 14) + 'px';
+                const hasKids = !!(kids[id] && kids[id].length);
+                const files = n.files || [];
+                const expandable = hasKids || files.length;
+
+                const twirl = document.createElement('span');
+                twirl.className = 'folder-twirl';
+                twirl.textContent = expandable ? (expanded.has(id) ? '▾' : '▸') : '';
+                if (expandable) twirl.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    expanded.has(id) ? expanded.delete(id) : expanded.add(id);
+                    render();
+                });
+                row.appendChild(twirl);
+
+                const name = document.createElement('span');
+                name.className = 'folder-name';
+                name.textContent = n.label;
+                row.appendChild(name);
+
+                const count = document.createElement('span');
+                count.className = 'folder-count';
+                count.textContent = n.total;
+                row.appendChild(count);
+
+                row.addEventListener('click', () => {
+                    if (selected.has(id)) { selected.delete(id); }
+                    else { selected.add(id); centerOnFolder(id); }
+                    refreshHighlights();
+                    render();
+                });
+                frag.appendChild(row);
+
+                if (expandable && expanded.has(id)) {
+                    for (const c of kids[id] || []) renderNode(c, depth + 1, frag);
+                    for (const [fname, fpIdx] of files) renderFile(n.adir, fname, fpIdx, depth + 1, frag);
+                }
+            }
+
+            function renderFile(adir, fname, fpIdx, depth, frag) {
+                const path = adir + '/' + fname;
+                const row = document.createElement('div');
+                row.className = 'folder-row file-row' + (selectedFiles.has(path) ? ' selected' : '');
+                row.style.paddingLeft = (depth * 14) + 'px';
+
+                const icon = document.createElement('span');
+                icon.className = 'file-icon';
+                icon.textContent = '·';
+                row.appendChild(icon);
+
+                const name = document.createElement('span');
+                name.className = 'folder-name';
+                name.textContent = fname;
+                row.appendChild(name);
+
+                row.addEventListener('click', () => {
+                    if (selectedFiles.has(path)) selectedFiles.delete(path);
+                    else { selectedFiles.set(path, fpIdx); centerOnFp(fpIdx); }
+                    refreshHighlights();
+                    showHeader(path, fname);
+                    render();
+                });
+                frag.appendChild(row);
+            }
+
+            function centerOnFp(fpIdx) {
+                const c = FOLDERS.footprints[fpIdx];
+                const ra = (c[0][0] + c[1][0] + c[2][0] + c[3][0]) / 4;
+                const dec = (c[0][1] + c[1][1] + c[2][1] + c[3][1]) / 4;
+                aladin.gotoRaDec(ra, dec);
+                try { if (aladin.getFov()[0] > 20) aladin.setFov(8); } catch (e) {}
+            }
+            function render() {
+                const frag = document.createDocumentFragment();
+                for (const r of roots) renderNode(r, 0, frag);
+                treeDiv.innerHTML = '';
+                treeDiv.appendChild(frag);
+            }
+
+            // ---------- map click → jump the browser to that target's folder(s) ----------
+            // Reverse index: which leaf folders contain a file at each footprint.
+            const fpToNodes = new Map();
+            tree.forEach((n, id) => {
+                for (const [, fpIdx] of (n.files || [])) {
+                    if (!fpToNodes.has(fpIdx)) fpToNodes.set(fpIdx, new Set());
+                    fpToNodes.get(fpIdx).add(id);
+                }
+            });
+            function pointInQuad(ra, dec, quad) {
+                let inside = false;
+                for (let i = 0, j = 3; i < 4; j = i++) {
+                    const xi = quad[i][0], yi = quad[i][1], xj = quad[j][0], yj = quad[j][1];
+                    if (((yi > dec) !== (yj > dec)) &&
+                        (ra < (xj - xi) * (dec - yi) / (yj - yi) + xi)) inside = !inside;
+                }
+                return inside;
+            }
+            function revealFoldersAt(ra, dec) {
+                const nodeSet = new Set();
+                for (let idx = 0; idx < FOLDERS.footprints.length; idx++) {
+                    if (pointInQuad(ra, dec, FOLDERS.footprints[idx])) {
+                        const ns = fpToNodes.get(idx);
+                        if (ns) for (const id of ns) nodeSet.add(id);
+                    }
+                }
+                if (!nodeSet.size) return;
+                setFoldersCollapsed(false);
+                for (const id of nodeSet) {           // expand each match's ancestors
+                    let p = tree[id].parent;
+                    while (p !== null && p !== undefined) { expanded.add(p); p = tree[p].parent; }
+                }
+                render();
+                let first = null;
+                for (const id of nodeSet) {
+                    const row = treeDiv.querySelector('.folder-row[data-node-id="' + id + '"]');
+                    if (!row) continue;
+                    row.classList.add('flash');
+                    setTimeout(() => row.classList.remove('flash'), 2000);
+                    if (!first) first = row;
+                }
+                if (first) {
+                    const r = first.getBoundingClientRect(), t = treeDiv.getBoundingClientRect();
+                    treeDiv.scrollTop += (r.top - t.top) - t.height / 2;
+                }
+                toastMsg('Imaged in ' + nodeSet.size + ' folder' + (nodeSet.size > 1 ? 's' : ''));
+            }
+
+            // ---------- rescan buttons (one per rig + All) ----------
+            const rescanBar = document.getElementById('rescan-bar');
+            function buildRescanBar() {
+                rescanBar.innerHTML = '<span>Rescan:</span>';
+                const mk = (label, rig) => {
+                    const b = document.createElement('button');
+                    b.className = 'rescan-btn';
+                    b.textContent = label;
+                    b.addEventListener('click', () => doRescan(rig, b));
+                    rescanBar.appendChild(b);
+                };
+                for (const r of DATA.rigs) mk(r.label, r.label);
+                if (DATA.rigs.length > 1) mk('All', 'all');
+            }
+            async function doRescan(rig, btn) {
+                const btns = rescanBar.querySelectorAll('.rescan-btn');
+                btns.forEach(b => b.disabled = true);
+                const label = btn.textContent;
+                btn.textContent = 'Rescanning…';
+                toastMsg('Rescanning ' + rig + ' — checking disk, this can take a moment…');
+                try {
+                    const resp = await fetch('/api/rescan?rig=' + encodeURIComponent(rig));
+                    const r = await resp.json();
+                    if (!r.ok) throw new Error(r.error || 'rescan failed');
+                    toastMsg('Rescanned ' + r.rigs + ': ' + r.processed + ' new/changed, '
+                             + r.deleted + ' removed → reloading');
+                    setTimeout(() => window.location.reload(), 900);
+                } catch (e) {
+                    btns.forEach(b => b.disabled = false);
+                    btn.textContent = label;
+                    toastMsg('Rescan failed: ' + e.message);
+                }
+            }
+            buildRescanBar();
+
+            colorInput.addEventListener('input', () => { refreshHighlights(); saveState(); });
+            document.getElementById('folders-clear').addEventListener('click', () => {
+                selected.clear(); selectedFiles.clear(); refreshHighlights(); render();
+            });
+            document.getElementById('tree-collapse').addEventListener('click', () => {
+                expanded.clear(); render();           // collapse the whole tree to rig roots
+                treeDiv.scrollTop = 0;
+            });
+
+            // ---------- header popup: read a file's full FITS/XISF header live ----------
+            const headerPanel = document.getElementById('header-panel');
+            const headerTitle = document.getElementById('header-panel-title');
+            const headerPre = document.getElementById('header-panel-pre');
+            let headerReqId = 0;
+            async function showHeader(path, fname) {
+                const reqId = ++headerReqId;
+                headerTitle.textContent = fname;
+                headerPre.textContent = 'Loading header…';
+                headerPanel.style.display = 'flex';
+                try {
+                    const resp = await fetch('/api/header?path=' + encodeURIComponent(path));
+                    const text = await resp.text();
+                    if (reqId !== headerReqId) return;   // a newer click superseded this
+                    headerPre.textContent = resp.ok ? text : ('Could not read header (' + resp.status + ').\n' +
+                        'Header reading needs the script-launched server on port ' + location.port + '.');
+                } catch (e) {
+                    if (reqId !== headerReqId) return;
+                    headerPre.textContent = 'Could not reach the header service.\n' +
+                        'Make sure the map was opened via the server the script started (python sky-mapper.py).';
+                }
+            }
+            document.getElementById('header-panel-close').addEventListener('click', () => {
+                headerPanel.style.display = 'none';
+            });
+            // drag the header popup by its title bar
+            const headerBar = document.getElementById('header-panel-bar');
+            let hdrag = null;
+            headerBar.addEventListener('pointerdown', (e) => {
+                if (e.target.id === 'header-panel-close') return;
+                hdrag = { x0: e.clientX, y0: e.clientY, left: headerPanel.offsetLeft, top: headerPanel.offsetTop };
+                headerPanel.style.transform = 'none';
+                headerPanel.style.left = hdrag.left + 'px';
+                headerPanel.style.top = hdrag.top + 'px';
+                try { headerBar.setPointerCapture(e.pointerId); } catch (err) {}
+                e.preventDefault();
+            });
+            headerBar.addEventListener('pointermove', (e) => {
+                if (!hdrag) return;
+                headerPanel.style.left = (hdrag.left + e.clientX - hdrag.x0) + 'px';
+                headerPanel.style.top = Math.max(0, hdrag.top + e.clientY - hdrag.y0) + 'px';
+            });
+            headerBar.addEventListener('pointerup', () => { hdrag = null; });
+
+            // folder panel: draggable + collapsible (same behavior as the main panel)
+            function setFoldersCollapsed(c) {
+                foldersBody.style.display = c ? 'none' : 'flex';
+                foldersCollapseBtn.innerText = c ? '▸' : '▾';
+            }
+            function placeFolders(x, y) {
+                x = Math.max(0, Math.min(x, window.innerWidth - 80));
+                y = Math.max(0, Math.min(y, window.innerHeight - 40));
+                foldersPanel.style.left = x + 'px';
+                foldersPanel.style.top = y + 'px';
+                foldersPanel.style.maxHeight = (window.innerHeight - y - 20) + 'px';
+            }
+            placeFolders(SETTINGS.folderPanelX, SETTINGS.folderPanelY);
+            let fdrag = null;
+            foldersHeader.addEventListener('pointerdown', (e) => {
+                fdrag = { x0: e.clientX, y0: e.clientY,
+                          left: foldersPanel.offsetLeft, top: foldersPanel.offsetTop, moved: false };
+                try { foldersHeader.setPointerCapture(e.pointerId); } catch (err) {}
+                e.preventDefault();
+            });
+            foldersHeader.addEventListener('pointermove', (e) => {
+                if (!fdrag) return;
+                const dx = e.clientX - fdrag.x0, dy = e.clientY - fdrag.y0;
+                if (Math.abs(dx) + Math.abs(dy) > 4) fdrag.moved = true;
+                if (fdrag.moved) placeFolders(fdrag.left + dx, fdrag.top + dy);
+            });
+            foldersHeader.addEventListener('pointerup', () => {
+                if (!fdrag) return;
+                const moved = fdrag.moved;
+                fdrag = null;
+                if (!moved) setFoldersCollapsed(foldersBody.style.display !== 'none');
+                saveState();
+            });
+            render();
+
+            // console hook for debugging the folder browser
+            window.folderBrowser = { tree, kids, selected, selectedFiles, expanded,
+                                     highlightOverlay, refreshHighlights, showHeader,
+                                     revealFoldersAt };
+            window.skyDebug = {
+                get nearbyCatalogName() { return nearbyCatalogName; },
+                get ninaTargetJSON() { return ninaTargetJSON; },
+                get loadCatalogData() { return loadCatalogData; },
+                get catColors() { return catColors; },
+            };
+
+            // ================= menu + panels =================
+            const PANELS = {
+                controls: { el: document.getElementById('controls'), show: 'block' },
+                folders:  { el: document.getElementById('folders'),  show: 'flex' },
+                stats:    { el: document.getElementById('stats'),     show: 'flex' },
+                catalog:  { el: document.getElementById('catalog'),   show: 'flex' },
+                plan:     { el: document.getElementById('plan'),      show: 'flex' },
+            };
+            const openPanels = new Set(['controls']);
+            let planMode = false;
+            const panelPos = {};
+
+            function applyPanels() {
+                for (const [name, p] of Object.entries(PANELS)) {
+                    p.el.style.display = openPanels.has(name) ? p.show : 'none';
+                    const btn = document.querySelector('.menu-btn[data-panel="' + name + '"]');
+                    if (btn) btn.classList.toggle('active', openPanels.has(name));
+                }
+            }
+            const DEFAULT_POS = {
+                stats:   () => [Math.max(360, window.innerWidth - 340), 46],
+                catalog: () => [Math.max(360, window.innerWidth - 340), 46],
+                plan:    () => [Math.round(window.innerWidth / 2 - 160), 80],
+            };
+            function placeGeneric(name) {
+                const el = PANELS[name].el;
+                const p = panelPos[name] || (DEFAULT_POS[name] ? DEFAULT_POS[name]() : [380, 60]);
+                el.style.left = Math.max(0, Math.min(p[0], window.innerWidth - 80)) + 'px';
+                el.style.top = Math.max(38, Math.min(p[1], window.innerHeight - 40)) + 'px';
+            }
+            function openPanel(name, on) {
+                if (on === undefined) on = !openPanels.has(name);
+                if (on) { openPanels.add(name); placeGeneric(name); } else openPanels.delete(name);
+                if (on && name === 'stats') renderStats();
+                if (on && name === 'catalog') ensureCatalog();
+                applyPanels(); saveState();
+            }
+            document.querySelectorAll('.menu-btn[data-panel]').forEach(btn =>
+                btn.addEventListener('click', () => openPanel(btn.dataset.panel)));
+            document.querySelectorAll('.panel-x[data-panel]').forEach(btn =>
+                btn.addEventListener('click', () => openPanel(btn.dataset.panel, false)));
+
+            // generic drag for the stats/catalog/plan panels
+            document.querySelectorAll('.panel-head[data-drag]').forEach(head => {
+                const name = head.dataset.drag, el = PANELS[name].el;
+                let dg = null;
+                head.addEventListener('pointerdown', (e) => {
+                    if (e.target.classList.contains('panel-x')) return;
+                    dg = { x0: e.clientX, y0: e.clientY, left: el.offsetLeft, top: el.offsetTop };
+                    try { head.setPointerCapture(e.pointerId); } catch (err) {}
+                    e.preventDefault();
+                });
+                head.addEventListener('pointermove', (e) => {
+                    if (!dg) return;
+                    el.style.left = Math.max(0, dg.left + e.clientX - dg.x0) + 'px';
+                    el.style.top = Math.max(38, dg.top + e.clientY - dg.y0) + 'px';
+                });
+                head.addEventListener('pointerup', () => {
+                    if (!dg) return;
+                    panelPos[name] = [el.offsetLeft, el.offsetTop];
+                    dg = null; saveState();
+                });
+            });
+
+            const planBtn = document.getElementById('plan-mode-btn');
+            planBtn.addEventListener('click', () => {
+                planMode = !planMode;
+                planBtn.classList.toggle('active', planMode);
+                toastMsg(planMode ? 'Plan mode ON — click anywhere on the sky' : 'Plan mode off');
+                saveState();
+            });
+            document.getElementById('poster-btn').addEventListener('click', exportPoster);
+
+            // ================= statistics =================
+            function renderStats() {
+                const S = STATS, h = (s) => fmtExposure(s);
+                const filterRows = Object.entries(S.by_filter).map(([f, s]) =>
+                    '<tr><td>' + esc(f) + '</td><td class="r">' + h(s) + '</td></tr>').join('');
+                const rigRows = Object.entries(S.by_rig).map(([r, s]) =>
+                    '<tr><td>' + esc(r) + '</td><td class="r">' + h(s) + '</td></tr>').join('');
+                const months = Object.entries(S.by_month);
+                const mMax = Math.max(1, ...months.map(m => m[1]));
+                const monthRows = months.map(([m, s]) =>
+                    '<tr><td>' + m + '</td><td><div class="barwrap"><span class="bar" style="width:' +
+                    Math.round(s / mMax * 120) + 'px"></span><span style="color:#9bd">' + h(s) + '</span></div></td></tr>').join('');
+                const topRows = S.top_targets.map(t =>
+                    '<tr><td>' + esc(t.name) + '</td><td class="r">' + h(t.seconds) + ' · ' + t.frames + 'f</td></tr>').join('');
+                const cond = S.cond_count
+                    ? '<div class="stat-sec">Capture conditions (median)</div><table class="kv">' +
+                      (S.median_alt != null ? '<tr><td>Altitude</td><td class="r">' + S.median_alt + '°</td></tr>' : '') +
+                      (S.median_airmass != null ? '<tr><td>Airmass</td><td class="r">' + S.median_airmass + '</td></tr>' : '') +
+                      (S.median_foctemp != null ? '<tr><td>Focuser temp</td><td class="r">' + S.median_foctemp + '°C</td></tr>' : '') +
+                      '</table>' : '';
+                document.getElementById('stats-body').innerHTML =
+                    '<div class="stat-big">' +
+                    '<div><div class="num">' + h(S.total_seconds) + '</div><div class="lbl">Integration</div></div>' +
+                    '<div><div class="num">' + S.total_frames.toLocaleString() + '</div><div class="lbl">Light frames</div></div>' +
+                    '<div><div class="num">' + S.targets + '</div><div class="lbl">Targets</div></div>' +
+                    '<div><div class="num">' + S.nights + '</div><div class="lbl">Nights</div></div>' +
+                    '</div>' +
+                    '<div class="muted">' + (S.date_min || '?') + ' → ' + (S.date_max || '?') + '</div>' +
+                    '<div class="stat-sec">Integration by filter</div><table class="kv">' + filterRows + '</table>' +
+                    '<div class="stat-sec">By rig</div><table class="kv">' + rigRows + '</table>' +
+                    '<div class="stat-sec">By month</div><table class="kv">' + monthRows + '</table>' +
+                    '<div class="stat-sec">Most-imaged targets</div><table class="kv">' + topRows + '</table>' +
+                    cond;
+            }
+
+            // ================= Messier / Caldwell catalog =================
+            // ================= Messier / Caldwell / NGC catalog =================
+            let catalogData = null;
+            const CAT_LABEL = { M: 'Messier', C: 'Caldwell', N: 'NGC' };
+            const CAT_DEFAULT_COLOR = { M: '#55ddff', C: '#ffaa44', N: '#cc88ff' };
+            const catColors = Object.assign({}, CAT_DEFAULT_COLOR);
+            const catShow = { M: true, C: true, N: false };   // NGC off by default (thousands of markers)
+            const catTodo = { M: false, C: false, N: false };  // "only to-do" filter, per catalog
+            let catTab = 'M';
+            const catLayers = {};                              // cat -> A.catalog
+            const catByCat = { M: [], C: [], N: [] };
+
+            function clusterCoversPoint(ra, dec) {
+                for (const c of DATA.clusters) {
+                    const r = c.rect;
+                    if (dec < r[2] || dec > r[3]) continue;
+                    if (pointInQuad(ra, dec, c.corners)) return true;
+                }
+                return false;
+            }
+            async function loadCatalogData() {
+                if (catalogData) return catalogData;
+                if (!SETTINGS.catalogPresent) return null;
+                const r = await fetch(SETTINGS.catalogFile);
+                catalogData = await r.json();
+                for (const o of catalogData) {
+                    o.done = clusterCoversPoint(o.ra, o.dec);
+                    (catByCat[o.cat] = catByCat[o.cat] || []).push(o);
+                }
+                return catalogData;
+            }
+            function nearbyCatalogName(ra, dec) {
+                if (!catalogData) return null;
+                const cd = Math.cos(dec * Math.PI / 180);
+                const rank = { M: 0, C: 1, N: 2 };            // prefer Messier > Caldwell > NGC name
+                let best = null, bestKey = [9, 0.1];          // [rank, distance]; 0.1° ≈ "clicked on it"
+                for (const o of catalogData) {
+                    const dd = dec - o.dec;
+                    const dx = (((ra - o.ra + 540) % 360) - 180) * cd;
+                    const d = Math.sqrt(dd * dd + dx * dx);
+                    if (d > 0.1) continue;
+                    const key = [rank[o.cat] ?? 3, d];
+                    if (key[0] < bestKey[0] || (key[0] === bestKey[0] && key[1] < bestKey[1])) {
+                        bestKey = key; best = o;
+                    }
+                }
+                return best ? (best.desig || best.id) : null;
+            }
+            function makeCatLayer(cat) {
+                const layer = A.catalog({
+                    name: 'cat-' + cat, sourceSize: cat === 'N' ? 7 : 9, shape: 'circle',
+                    color: catColors[cat], displayLabel: cat !== 'N',   // NGC has too many for labels
+                    labelColumn: 'name', labelColor: catColors[cat], labelFont: '10px sans-serif'
+                });
+                aladin.addCatalog(layer);
+                return layer;
+            }
+            function populateCatLayer(cat) {
+                const layer = catLayers[cat];
+                if (!layer) return;
+                layer.removeAll();
+                const src = [];
+                for (const o of (catByCat[cat] || [])) {
+                    if (catTodo[cat] && o.done) continue;
+                    src.push(A.source(o.ra, o.dec, { name: o.id }));
+                }
+                if (src.length) layer.addSources(src);
+            }
+            function ensureCatLayer(cat) {                     // (re)build in current color
+                if (catLayers[cat]) {
+                    try { aladin.removeOverlay(catLayers[cat]); }
+                    catch (e) { try { catLayers[cat].hide(); } catch (e2) {} }
+                }
+                catLayers[cat] = makeCatLayer(cat);
+                populateCatLayer(cat);
+            }
+            function applyCatVis() {
+                for (const cat of ['M', 'C', 'N']) {
+                    if (catShow[cat]) {
+                        if (!catLayers[cat]) ensureCatLayer(cat);
+                        try { catLayers[cat].show(); } catch (e) {}
+                    } else if (catLayers[cat]) {
+                        try { catLayers[cat].hide(); } catch (e) {}
+                    }
+                }
+            }
+            async function ensureCatalog() {
+                const body = document.getElementById('catalog-body');
+                if (!SETTINGS.catalogPresent) { body.textContent = 'Catalog file missing — run generate_catalog.py.'; return; }
+                if (!catalogData) {
+                    body.textContent = 'Loading catalog…';
+                    try { await loadCatalogData(); } catch (e) { body.textContent = 'Could not load catalog.'; return; }
+                }
+                renderCatalogPanel();
+                applyCatVis();
+            }
+            function renderCatalogPanel() {
+                const tabs = ['M', 'C', 'N'].map(cat =>
+                    '<button class="cat-tab' + (cat === catTab ? ' active' : '') + '" data-cat="' + cat + '">' +
+                    CAT_LABEL[cat] + '</button>').join('');
+                const objs = catByCat[catTab] || [];
+                const done = objs.filter(o => o.done).length;
+                document.getElementById('catalog-body').innerHTML =
+                    '<div class="cat-tabs">' + tabs + '</div>' +
+                    '<div class="cat-ctrls">' +
+                    '<input type="color" id="cat-color" value="' + catColors[catTab] + '" title="Marker & label color">' +
+                    '<label class="checkbox-container"><input type="checkbox" id="cat-show"' + (catShow[catTab] ? ' checked' : '') + '> Show on map</label>' +
+                    '<label class="checkbox-container"><input type="checkbox" id="cat-todo"' + (catTodo[catTab] ? ' checked' : '') + '> Only to-do</label>' +
+                    '</div>' +
+                    '<div class="cat-prog">' + CAT_LABEL[catTab] + ' <span class="pct">' + done + '/' + objs.length + '</span> imaged</div>' +
+                    '<div id="catalog-list"></div>';
+                document.querySelectorAll('.cat-tab').forEach(b => b.addEventListener('click', () => {
+                    catTab = b.dataset.cat; renderCatalogPanel(); saveState();
+                }));
+                document.getElementById('cat-color').addEventListener('change', e => {
+                    catColors[catTab] = e.target.value;
+                    if (catShow[catTab]) ensureCatLayer(catTab);   // recreate in the new color
+                    saveState();
+                });
+                document.getElementById('cat-show').addEventListener('change', e => {
+                    catShow[catTab] = e.target.checked; applyCatVis(); saveState();
+                });
+                document.getElementById('cat-todo').addEventListener('change', e => {
+                    catTodo[catTab] = e.target.checked;
+                    if (catLayers[catTab]) populateCatLayer(catTab);
+                    renderCatalogList(); saveState();
+                });
+                renderCatalogList();
+            }
+            function renderCatalogList() {
+                const objs = catByCat[catTab] || [];
+                const todo = catTodo[catTab];
+                const list = document.getElementById('catalog-list');
+                const frag = document.createDocumentFragment();
+                let n = 0;
+                for (const o of objs) {
+                    if (todo && o.done) continue;
+                    if (++n > 1500) {                          // cap rows so the huge NGC list stays responsive
+                        const more = document.createElement('div');
+                        more.className = 'muted'; more.style.padding = '4px 2px';
+                        more.textContent = '…' + (objs.length - 1500) + ' more — use “Only to-do” to narrow the list.';
+                        frag.appendChild(more); break;
+                    }
+                    const row = document.createElement('div');
+                    row.className = 'cat-row ' + (o.done ? 'done' : 'todo');
+                    row.innerHTML = '<span class="ck">' + (o.done ? '✓' : '○') + '</span>' +
+                        '<span>' + esc(o.desig || o.id) + (o.common ? ' · ' + esc(o.common) : '') +
+                        ' <span style="color:#777">(' + esc(o.otype) + ')</span></span>';
+                    row.addEventListener('click', () => { aladin.gotoRaDec(o.ra, o.dec); aladin.setFov(2.5); });
+                    frag.appendChild(row);
+                }
+                list.innerHTML = '';
+                list.appendChild(frag);
+            }
+
+            // ================= altitude curve (shared by plan + details) =================
+            function altitudeCurve(canvas, ra, dec) {
+                if (SETTINGS.lat === null) return null;
+                const ctx = canvas.getContext('2d');
+                const W = canvas.width, H = canvas.height;
+                ctx.clearRect(0, 0, W, H);
+                const start = new Date(); start.setHours(16, 0, 0, 0);
+                const span = 18 * 3600 * 1000, N = 96;
+                const X = i => 4 + i * (W - 8) / N;
+                const Y = a => H - 14 - (Math.max(-10, Math.min(90, a)) + 10) / 100 * (H - 18);
+                let maxAlt = -90, maxI = 0; const alts = [], dark = [];
+                for (let i = 0; i <= N; i++) {
+                    const jd = julianDate(new Date(start.getTime() + i * span / N));
+                    const a = altDeg(ra, dec, jd); alts.push(a);
+                    const s = sunRaDec(jd); dark.push(altDeg(s.ra, s.dec, jd) < -18);
+                    if (a > maxAlt) { maxAlt = a; maxI = i; }
+                }
+                ctx.fillStyle = 'rgba(60,90,150,0.30)';
+                for (let i = 0; i < N; i++) if (dark[i]) ctx.fillRect(X(i), 0, (W - 8) / N + 1, H - 12);
+                ctx.strokeStyle = '#333'; ctx.beginPath(); ctx.moveTo(4, Y(0)); ctx.lineTo(W - 4, Y(0)); ctx.stroke();
+                ctx.strokeStyle = '#664'; ctx.setLineDash([3, 3]); ctx.beginPath();
+                ctx.moveTo(4, Y(SETTINGS.minAlt)); ctx.lineTo(W - 4, Y(SETTINGS.minAlt)); ctx.stroke(); ctx.setLineDash([]);
+                ctx.strokeStyle = '#6cf'; ctx.lineWidth = 2; ctx.beginPath();
+                alts.forEach((a, i) => { const px = X(i), py = Y(a); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }); ctx.stroke();
+                ctx.fillStyle = '#fd6'; ctx.beginPath(); ctx.arc(X(maxI), Y(maxAlt), 3, 0, 7); ctx.fill();
+                ctx.fillStyle = '#888'; ctx.font = '9px sans-serif';
+                ctx.fillText('90°', 2, 9); ctx.fillText(SETTINGS.minAlt + '°', 2, Y(SETTINGS.minAlt) - 2);
+                [['18h', 2 / 18], ['00h', 8 / 18], ['06h', 14 / 18]].forEach(([t, f]) =>
+                    ctx.fillText(t, X(N * f) - 6, H - 2));
+                return { maxAlt: Math.round(maxAlt), maxTime: new Date(start.getTime() + maxI * span / N) };
+            }
+            const hhmm = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+
+            // ================= target file export =================
+            function downloadText(filename, text, mime) {
+                const blob = new Blob([text], { type: mime || 'text/plain' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+                URL.revokeObjectURL(a.href);
+            }
+            function raParts(raDeg) {
+                let t = ((raDeg % 360) + 360) % 360 / 15, h = Math.floor(t);
+                let mf = (t - h) * 60, m = Math.floor(mf), s = Math.round((mf - m) * 60 * 100) / 100;
+                if (s >= 60) { s -= 60; m++; } if (m >= 60) { m -= 60; h++; } h %= 24;
+                return [h, m, s];
+            }
+            function decParts(decDeg) {
+                const neg = decDeg < 0; let a = Math.abs(decDeg), d = Math.floor(a);
+                let mf = (a - d) * 60, m = Math.floor(mf), s = Math.round((mf - m) * 60 * 100) / 100;
+                if (s >= 60) { s -= 60; m++; } if (m >= 60) { m -= 60; d++; }
+                return [neg, d, m, s];
+            }
+            // NINA Advanced Sequencer target (.json) — same schema as a target exported
+            // from NINA, so it imports directly into the sequencer.
+            function ninaTargetJSON(name, ra, dec) {
+                const [rh, rm, rs] = raParts(ra), [neg, dd, dm, ds] = decParts(dec);
+                const obj = {
+                    "$id": "1", "$type": "NINA.Sequencer.Container.DeepSkyObjectContainer, NINA.Sequencer",
+                    "Target": {
+                        "$id": "2", "$type": "NINA.Astrometry.InputTarget, NINA.Astrometry",
+                        "Expanded": true, "TargetName": name, "PositionAngle": 0.0,
+                        "InputCoordinates": {
+                            "$id": "3", "$type": "NINA.Astrometry.InputCoordinates, NINA.Astrometry",
+                            "RAHours": rh, "RAMinutes": rm, "RASeconds": rs,
+                            "NegativeDec": neg, "DecDegrees": dd, "DecMinutes": dm, "DecSeconds": ds
+                        }
+                    },
+                    "ExposureInfoListExpanded": false,
+                    "ExposureInfoList": { "$id": "4", "$type": "NINA.Core.Utility.AsyncObservableCollection`1[[NINA.Sequencer.Utility.ExposureInfo, NINA.Sequencer]], NINA.Core", "$values": [] },
+                    "Strategy": { "$type": "NINA.Sequencer.Container.ExecutionStrategy.SequentialStrategy, NINA.Sequencer" },
+                    "Name": name,
+                    "Conditions": { "$id": "5", "$type": "System.Collections.ObjectModel.ObservableCollection`1[[NINA.Sequencer.Conditions.ISequenceCondition, NINA.Sequencer]], System.ObjectModel", "$values": [] },
+                    "IsExpanded": true,
+                    "Items": {
+                        "$id": "6", "$type": "System.Collections.ObjectModel.ObservableCollection`1[[NINA.Sequencer.SequenceItem.ISequenceItem, NINA.Sequencer]], System.ObjectModel",
+                        "$values": [{
+                            "$id": "7", "$type": "NINA.Sequencer.SequenceItem.Imaging.TakeExposure, NINA.Sequencer",
+                            "ExposureTime": 60.0, "Gain": -1, "Offset": -1,
+                            "Binning": { "$id": "8", "$type": "NINA.Core.Model.Equipment.BinningMode, NINA.Core", "X": 1, "Y": 1 },
+                            "ImageType": "LIGHT", "ExposureCount": 0, "Parent": { "$ref": "1" }, "ErrorBehavior": 0, "Attempts": 1
+                        }]
+                    },
+                    "Triggers": { "$id": "9", "$type": "System.Collections.ObjectModel.ObservableCollection`1[[NINA.Sequencer.Trigger.ISequenceTrigger, NINA.Sequencer]], System.ObjectModel", "$values": [] },
+                    "Parent": null, "ErrorBehavior": 0, "Attempts": 1
+                };
+                return JSON.stringify(obj, null, 2);
+            }
+            async function saveNinaTarget(ra, dec) {
+                // Use a known catalog object's name if the point is on one; otherwise ask.
+                try { await loadCatalogData(); } catch (e) {}
+                let name = nearbyCatalogName(ra, dec);
+                if (!name) {
+                    name = prompt('Object name for the NINA target:', '');
+                    if (name === null) return;            // cancelled
+                    name = name.trim() || 'Sky point';
+                }
+                const fname = name.replace(/[\\/:*?"<>|]/g, '').trim() + '.json';
+                downloadText(fname, ninaTargetJSON(name, ra, dec), 'application/json');
+                toastMsg('Saved NINA target: ' + name);
+            }
+
+            // ================= plan popup (click empty sky in plan mode) =================
+            function openPlanPopup(ra, dec) {
+                openPanels.add('plan'); placeGeneric('plan'); applyPanels();
+                const body = document.getElementById('plan-body');
+                const safe = (raToHms(ra) + ' ' + decToDms(dec));
+                body.innerHTML =
+                    '<div class="muted">' + esc(safe) + '</div>' +
+                    '<div class="muted">' + ra.toFixed(5) + ', ' + dec.toFixed(5) + '</div>' +
+                    '<canvas id="plan-alt"></canvas>' +
+                    '<div id="plan-alt-info" class="muted"></div>' +
+                    '<div id="plan-where" class="muted">…</div>' +
+                    '<button class="search-btn" id="plan-copy" style="width:100%;margin-top:8px;">Copy coordinates</button>' +
+                    '<button class="search-btn" id="plan-nina" style="width:100%;margin-top:6px;">Save NINA target (.json)</button>';
+                const cv = document.getElementById('plan-alt');
+                cv.width = cv.clientWidth || 296; cv.height = 120;
+                const r = altitudeCurve(cv, ra, dec);
+                document.getElementById('plan-alt-info').innerText = r
+                    ? 'Tonight: max altitude ' + r.maxAlt + '° at ' + hhmm(r.maxTime)
+                    : 'Set OBSERVER_LAT/LON for altitude.';
+                document.getElementById('plan-copy').addEventListener('click', () => {
+                    navigator.clipboard.writeText(ra.toFixed(6) + ', ' + dec.toFixed(6))
+                        .then(() => toastMsg('Copied coordinates')).catch(() => {});
+                });
+                document.getElementById('plan-nina').addEventListener('click', () => saveNinaTarget(ra, dec));
+                fetch('/api/objectinfo?ra=' + ra + '&dec=' + dec).then(r => r.json()).then(info => {
+                    const w = document.getElementById('plan-where');
+                    if (!w) return;
+                    let s = info.constellation ? 'Constellation: ' + esc(info.constellation) : '';
+                    if (info.simbad_url) s += (s ? ' · ' : '') + '<a href="' + info.simbad_url +
+                        '" target="_blank" rel="noopener" style="color:#6cf">SIMBAD here</a>';
+                    if (info.ned_url) s += ' · <a href="' + info.ned_url +
+                        '" target="_blank" rel="noopener" style="color:#6cf">NED here</a>';
+                    w.innerHTML = s;
+                }).catch(() => {});
+            }
+
+            // ================= poster export =================
+            function exportPoster() {
+                try {
+                    const r = aladin.getViewDataURL ? aladin.getViewDataURL({ format: 'image/png' }) : null;
+                    if (r) {
+                        Promise.resolve(r).then(url => { downloadHref(url, 'sky_coverage.png'); toastMsg('Poster exported'); });
+                        return;
+                    }
+                } catch (e) {}
+                const cv = document.querySelector('#aladin-lite-div canvas');
+                if (cv) { downloadHref(cv.toDataURL('image/png'), 'sky_coverage.png'); toastMsg('Poster exported'); }
+                else toastMsg('Export not supported by this Aladin build');
+            }
+            function downloadHref(href, name) {
+                const a = document.createElement('a'); a.href = href; a.download = name; a.click();
+            }
+
+            // ---------- remember UI state between sessions ----------
+            function saveState() {
+                try {
+                    localStorage.setItem(LS_KEY, JSON.stringify({
+                        survey: els.survey.value,
+                        grid: els.grid.checked,
+                        constellations: els.constellations.checked,
+                        mosaics: els.mosaics.checked,
+                        tonight: els.tonight.checked,
+                        flipH: els.flipH.checked,
+                        flipV: els.flipV.checked,
+                        rigs: rigEnabled,
+                        collapsed: controlsBody.style.display === 'none',
+                        panelX: controls.offsetLeft,
+                        panelY: controls.offsetTop,
+                        highlightColor: colorInput.value,
+                        folderCollapsed: foldersBody.style.display === 'none',
+                        folderPanelX: foldersPanel.offsetLeft,
+                        folderPanelY: foldersPanel.offsetTop,
+                        openPanels: Array.from(openPanels).filter(n => n !== 'plan'),
+                        planMode: planMode,
+                        panelPos: panelPos,
+                        catColors: catColors,
+                        catShow: catShow,
+                        catTodo: catTodo,
+                        catTab: catTab
+                    }));
+                } catch (e) {}
+            }
+            function restoreState() {
+                let s = null;
+                try { s = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) {}
+                if (!s) return;
+                if (s.survey && [...els.survey.options].some(o => o.value === s.survey)) {
+                    els.survey.value = s.survey;
+                    aladin.setBaseImageLayer(aladin.createImageSurvey(s.survey));
+                }
+                for (const key of ['grid', 'constellations', 'mosaics', 'tonight', 'flipH', 'flipV']) {
+                    if (typeof s[key] === 'boolean') els[key].checked = s[key];
+                }
+                if (els.flipH.checked || els.flipV.checked) applyFlips();
+                if (s.rigs) {
+                    for (const color in s.rigs) {
+                        if (rigCheckboxes[color]) {
+                            rigCheckboxes[color].checked = !!s.rigs[color];
+                            rigEnabled[color] = !!s.rigs[color];
+                        }
+                    }
+                }
+                if (typeof s.panelX === 'number' && typeof s.panelY === 'number') {
+                    placePanel(s.panelX, s.panelY);
+                }
+                if (s.collapsed) setCollapsed(true);
+                if (typeof s.highlightColor === 'string') {
+                    colorInput.value = s.highlightColor;
+                    refreshHighlights();
+                }
+                if (typeof s.folderPanelX === 'number' && typeof s.folderPanelY === 'number') {
+                    placeFolders(s.folderPanelX, s.folderPanelY);
+                }
+                if (s.folderCollapsed) setFoldersCollapsed(true);
+                if (els.grid.checked) aladin.showCooGrid();
+                if (els.constellations.checked) ensureConstellations();
+                if (els.tonight.checked && SETTINGS.lat === null) els.tonight.checked = false;
+                if (els.tonight.checked) ensureTonightOutline();
+                if (s.panelPos) Object.assign(panelPos, s.panelPos);
+                if (Array.isArray(s.openPanels)) {
+                    openPanels.clear();
+                    s.openPanels.forEach(n => { if (PANELS[n] && n !== 'plan') openPanels.add(n); });
+                }
+                if (typeof s.planMode === 'boolean') {
+                    planMode = s.planMode;
+                    planBtn.classList.toggle('active', planMode);
+                }
+                if (s.catColors) Object.assign(catColors, s.catColors);
+                if (s.catShow) Object.assign(catShow, s.catShow);
+                if (s.catTodo) Object.assign(catTodo, s.catTodo);
+                if (s.catTab && CAT_LABEL[s.catTab]) catTab = s.catTab;
+            }
+
+            restoreState();
+            applyPanels();
+            if (openPanels.has('stats')) renderStats();
+            if (openPanels.has('catalog')) ensureCatalog();
+            for (const n of openPanels) if (DEFAULT_POS[n]) placeGeneric(n);
+            rebuild();
+            updateLabelVisibility();
+            console.log("✅ Sky map ready: " + DATA.clusters.length + " clusters");
+        }).catch(err => console.error("Aladin error:", err));
+    </script>
+</body>
+</html>

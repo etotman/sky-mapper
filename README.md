@@ -157,14 +157,21 @@ Set these in `local_config.py` (any of them override the defaults in `sky-mapper
 
 ## How it works
 
-- **Scanner** (`sky-mapper.py`) walks `SEARCH_DIRS`, reads RA/Dec, target, exposure,
-  filter, date, camera FOV/rotation and capture conditions from each FITS/XISF header,
-  and caches them keyed by file path + modification time.
-- **Map generation** clusters frames by sky position, computes true footprints, and
-  writes a self‑contained `aladin_map.html` with the data embedded as JSON.
-- **Local server** serves that page plus a tiny API: `/api/header` (read a file's
-  header live), `/api/objectinfo` (SIMBAD lookup, cached), and `/api/rescan`
+Run `python sky-mapper.py`; that thin entry point ties together a handful of focused
+modules:
+
+- **`skymap_io.py`** — reads RA/Dec, target, exposure, filter, date, camera
+  FOV/rotation and capture conditions from each FITS/XISF header, and caches them by
+  file path + modification time.
+- **`skymap_catalog.py`** — clusters frames by sky position, computes true footprints,
+  and builds the folder tree and statistics.
+- **`skymap_web.py`** — fills `template.html` (the page markup/JS) with the data as
+  embedded JSON and writes `aladin_map.html`.
+- **`skymap_server.py`** — serves the page plus a tiny API: `/api/header` (read a
+  file's header live), `/api/objectinfo` (SIMBAD lookup, cached), and `/api/rescan`
   (re‑scan + rebuild on demand).
+- **`config.py`** holds the defaults (overridden by `local_config.py`); `skymap_scan.py`
+  and `skymap_simbad.py` round out scanning and reference‑data lookups.
 
 ---
 
