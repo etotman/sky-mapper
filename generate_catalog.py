@@ -90,8 +90,74 @@ for n, desig in CALDWELL.items():
         print(f"C{n} ({desig}): FAILED")
     time.sleep(0.15)
 
+# --- NGC catalog from OpenNGC (https://github.com/mattiaverga/OpenNGC, CC-BY-SA-4.0) ---
+# Resolving ~7800 NGC objects via SIMBAD would be far too slow, so pull OpenNGC's CSV.
+NGC_TYPE = {
+    'G': 'Galaxy', 'GPair': 'Galaxy Pair', 'GTrpl': 'Galaxy Triplet', 'GGroup': 'Galaxy Group',
+    'OCl': 'Open Cluster', 'GCl': 'Globular Cluster', 'Cl+N': 'Cluster + Nebula',
+    'PN': 'Planetary Nebula', 'HII': 'HII Region', 'DrkN': 'Dark Nebula', 'EmN': 'Emission Nebula',
+    'Neb': 'Nebula', 'RfN': 'Reflection Nebula', 'SNR': 'Supernova Remnant', 'Nova': 'Nova',
+    '*': 'Star', '**': 'Double Star', '*Ass': 'Star Association', 'Other': 'Other',
+}
+OPENNGC_URLS = [
+    "https://raw.githubusercontent.com/mattiaverga/OpenNGC/master/database_files/NGC.csv",
+    "https://raw.githubusercontent.com/mattiaverga/OpenNGC/master/NGC.csv",
+]
+raw = None
+for url in OPENNGC_URLS:
+    try:
+        raw = urllib.request.urlopen(url, timeout=60).read().decode('utf-8', 'replace')
+        print(f"Fetched OpenNGC from {url}")
+        break
+    except Exception as e:
+        print(f"  OpenNGC fetch failed ({url}): {e}")
+
+if raw:
+    lines = raw.splitlines()
+    idx = {h: i for i, h in enumerate(lines[0].split(';'))}
+    for line in lines[1:]:
+        cols = line.split(';')
+        if len(cols) <= idx['Dec']:
+            continue
+        name = cols[idx['Name']].strip()
+        if not name.startswith('NGC'):
+            continue
+        typ = cols[idx['Type']].strip()
+        if typ in ('Dup', 'NonEx', ''):
+            continue
+        ra_s, dec_s = cols[idx['RA']].strip(), cols[idx['Dec']].strip()
+        if not ra_s or not dec_s:
+            continue
+        try:
+            c = SkyCoord(ra_s + ' ' + dec_s, unit=(u.hourangle, u.deg))
+        except Exception:
+            continue
+        m = re.match(r'(\d+)(.*)', name[3:])
+        if not m:
+            continue
+        label = 'NGC ' + str(int(m.group(1))) + m.group(2).strip()
+        entry = {'id': 'NGC' + str(int(m.group(1))) + m.group(2).strip(), 'cat': 'N',
+                 'desig': label, 'ra': round(c.ra.deg, 5), 'dec': round(c.dec.deg, 5),
+                 'otype': NGC_TYPE.get(typ, typ)}
+        try:
+            maj = cols[idx['MajAx']].strip()
+            if maj:
+                entry['size'] = round(float(maj), 1)
+        except Exception:
+            pass
+        for col in ('V-Mag', 'B-Mag'):
+            v = cols[idx[col]].strip() if col in idx else ''
+            if v:
+                entry['mag'] = v
+                break
+        common = cols[idx['Common names']].strip() if 'Common names' in idx else ''
+        if common:
+            entry['common'] = common.split(',')[0].strip()
+        catalog.append(entry)
+
 with open(OUTPUT, 'w') as f:
     json.dump(catalog, f)
 print(f"\nWrote {len(catalog)} objects "
       f"({sum(1 for o in catalog if o['cat']=='M')} Messier, "
-      f"{sum(1 for o in catalog if o['cat']=='C')} Caldwell)")
+      f"{sum(1 for o in catalog if o['cat']=='C')} Caldwell, "
+      f"{sum(1 for o in catalog if o['cat']=='N')} NGC)")

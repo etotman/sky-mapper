@@ -53,12 +53,14 @@ Total integration time, light‑frame count, targets, and nights imaged; integra
 broken down **by filter, by rig, and by month**; a most‑imaged‑targets leaderboard;
 and median capture conditions (altitude, airmass, temperatures) pulled from headers.
 
-### Messier & Caldwell completion
-![Messier / Caldwell completion overlay](screenshots/catalog_completion.jpg)
+### Catalog completion (Messier · Caldwell · NGC)
+![Messier / Caldwell / NGC completion overlay](screenshots/catalog_completion.jpg)
 
-Overlay the Messier and Caldwell catalogs to track your "collection." Objects you've
-already captured show a green ✓; the rest show a gray ○. Filter to **only the
-to‑do objects** to decide what to image next, and click any entry to fly to it.
+Overlay the **Messier, Caldwell, and full NGC** catalogs to track your "collection."
+Each catalog has its own tab, a completion count, a **per‑catalog color picker** for
+its markers/labels, a **show‑on‑map** toggle, and an **only‑to‑do** filter to decide
+what to shoot next. Objects you've already captured show a ✓ in the list; click any
+entry to fly to it.
 
 ### Plan mode
 ![Plan mode with altitude curve and NINA export](screenshots/plan_mode.jpg)
@@ -66,12 +68,13 @@ to‑do objects** to decide what to image next, and click any entry to fly to it
 Turn on **Plan mode** and click any patch of sky to get a planning popup:
 - A **tonight altitude curve** with the astronomical‑dark window shaded.
 - The **constellation** and links to SIMBAD/NED for that position.
-- **Copy coordinates** to the clipboard, or **download a NINA‑importable target
-  file** (Telescopius‑format CSV) to load straight into your acquisition software.
+- **Copy coordinates** to the clipboard, or **save a NINA target** as a `.json`
+  sequencer‑target file (named after the catalog object if you clicked one, else it
+  prompts you for a name) that imports straight into N.I.N.A.'s Advanced Sequencer.
 
 ### Everything else
 - **"Available tonight" outline** — draws the region of sky that climbs above your
-  minimum altitude during tonight's darkness.
+  minimum altitude during tonight's darkness, plus a dashed **midnight‑meridian** line.
 - **Rescan buttons** (per rig or all) — re‑scan disk for added/deleted files and
   rebuild the map without leaving the browser.
 - **Export target list (CSV)** of every catalogued target, and **Export poster
@@ -178,8 +181,9 @@ python sky-mapper.py     # rescans and regenerates the map
 
 ## Regenerating the catalog
 
-`messier_caldwell.json` (used by the completion overlay) is included, but you can
-rebuild it from SIMBAD at any time:
+`messier_caldwell.json` (the Messier, Caldwell, and NGC objects used by the
+completion overlay) is included, but you can rebuild it at any time — Messier and
+Caldwell are resolved via SIMBAD and NGC is pulled from [OpenNGC](https://github.com/mattiaverga/OpenNGC):
 
 ```bash
 python generate_catalog.py
@@ -200,6 +204,7 @@ because they contain your local file paths or are regenerated on demand:
 
 - [Aladin Lite](https://aladin.cds.unistra.fr/AladinLite/) and the survey HiPS, by CDS, Strasbourg
 - [SIMBAD](https://simbad.cds.unistra.fr/) (CDS) and [NED](https://ned.ipac.caltech.edu/) (IPAC/Caltech) for object reference data
+- NGC catalog data from [OpenNGC](https://github.com/mattiaverga/OpenNGC) (CC‑BY‑SA‑4.0)
 - Constellation line data from [d3‑celestial](https://github.com/ofrohn/d3-celestial)
 
 ---

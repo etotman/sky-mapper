@@ -134,7 +134,7 @@ FOLDER_PANEL_Y = 90
 HIGHLIGHT_COLOR = "#ff00ff"   # magenta
 
 WEB_SERVER_PORT = 8001         # v12 uses its own port so it can run alongside v11
-SERVER_VERSION  = 15           # bump when the server's API code changes, to force a
+SERVER_VERSION  = 17           # bump when the server's API code changes, to force a
                                # running background server to be replaced on next run
 
 CONSTELLATION_FILE = os.path.join(SCRIPT_DIR, "constellations.lines.json")
@@ -963,6 +963,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
         /* catalog */
         .cat-toggles { display: flex; gap: 12px; margin-bottom: 8px; }
+        .cat-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+        .cat-tab { flex: 1; background: #2b2b2b; color: #ccc; border: 1px solid #444; padding: 4px 6px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .cat-tab:hover { background: #3a3a3a; }
+        .cat-tab.active { background: #2a4a6a; border-color: #3a6a9a; color: #fff; }
+        .cat-ctrls { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+        .cat-ctrls input[type=color] { width: 26px; height: 22px; padding: 0; border: 1px solid #444; background: #222; border-radius: 4px; cursor: pointer; }
         .cat-prog { font-size: 12px; margin: 4px 0; }
         .cat-prog .pct { color: #6f6; font-weight: bold; }
         #catalog-list { max-height: 46vh; overflow-y: auto; }
@@ -1306,7 +1312,20 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 tonightOverlay = A.graphicOverlay({ color: TONIGHT_COLOR, lineWidth: 3 });
                 aladin.addOverlay(tonightOverlay);
                 tonightOverlay.add(A.polyline(pts, { color: TONIGHT_COLOR, lineWidth: 3 }));
-                toastMsg('Orange outline = sky above ' + SETTINGS.minAlt + '° altitude sometime tonight');
+
+                // Thin dashed meridian at local midnight: the hour circle (constant
+                // RA = local sidereal time at 00:00) — objects near it transit ~midnight.
+                const mstart = new Date(); mstart.setHours(12, 0, 0, 0);
+                if (Date.now() < mstart.getTime()) mstart.setDate(mstart.getDate() - 1);
+                const jdMid = julianDate(new Date(mstart.getTime() + 12 * 3600 * 1000));
+                const lstMid = ((gmstDeg(jdMid) + SETTINGS.lon) % 360 + 360) % 360;
+                // dashed = short segments with gaps (Aladin ignores per-shape lineDash)
+                for (let d = -87; d < 87; d += 6) {
+                    tonightOverlay.add(A.polyline([[lstMid, d], [lstMid, d + 3]],
+                        { color: TONIGHT_COLOR, lineWidth: 1 }));
+                }
+
+                toastMsg('Orange: sky above ' + SETTINGS.minAlt + '° tonight; dashed line = midnight meridian');
             }
 
             // ---------- (re)draw all footprints + labels from current UI state ----------
@@ -1937,6 +1956,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             window.folderBrowser = { tree, kids, selected, selectedFiles, expanded,
                                      highlightOverlay, refreshHighlights, showHeader,
                                      revealFoldersAt };
+            window.skyDebug = {
+                get nearbyCatalogName() { return nearbyCatalogName; },
+                get ninaTargetJSON() { return ninaTargetJSON; },
+                get loadCatalogData() { return loadCatalogData; },
+                get catColors() { return catColors; },
+            };
 
             // ================= menu + panels =================
             const PANELS = {
@@ -2047,7 +2072,17 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             }
 
             // ================= Messier / Caldwell catalog =================
-            let catalogData = null, catLayers = null;
+            // ================= Messier / Caldwell / NGC catalog =================
+            let catalogData = null;
+            const CAT_LABEL = { M: 'Messier', C: 'Caldwell', N: 'NGC' };
+            const CAT_DEFAULT_COLOR = { M: '#55ddff', C: '#ffaa44', N: '#cc88ff' };
+            const catColors = Object.assign({}, CAT_DEFAULT_COLOR);
+            const catShow = { M: true, C: true, N: false };   // NGC off by default (thousands of markers)
+            const catTodo = { M: false, C: false, N: false };  // "only to-do" filter, per catalog
+            let catTab = 'M';
+            const catLayers = {};                              // cat -> A.catalog
+            const catByCat = { M: [], C: [], N: [] };
+
             function clusterCoversPoint(ra, dec) {
                 for (const c of DATA.clusters) {
                     const r = c.rect;
@@ -2056,71 +2091,133 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 }
                 return false;
             }
+            async function loadCatalogData() {
+                if (catalogData) return catalogData;
+                if (!SETTINGS.catalogPresent) return null;
+                const r = await fetch(SETTINGS.catalogFile);
+                catalogData = await r.json();
+                for (const o of catalogData) {
+                    o.done = clusterCoversPoint(o.ra, o.dec);
+                    (catByCat[o.cat] = catByCat[o.cat] || []).push(o);
+                }
+                return catalogData;
+            }
+            function nearbyCatalogName(ra, dec) {
+                if (!catalogData) return null;
+                const cd = Math.cos(dec * Math.PI / 180);
+                const rank = { M: 0, C: 1, N: 2 };            // prefer Messier > Caldwell > NGC name
+                let best = null, bestKey = [9, 0.1];          // [rank, distance]; 0.1° ≈ "clicked on it"
+                for (const o of catalogData) {
+                    const dd = dec - o.dec;
+                    const dx = (((ra - o.ra + 540) % 360) - 180) * cd;
+                    const d = Math.sqrt(dd * dd + dx * dx);
+                    if (d > 0.1) continue;
+                    const key = [rank[o.cat] ?? 3, d];
+                    if (key[0] < bestKey[0] || (key[0] === bestKey[0] && key[1] < bestKey[1])) {
+                        bestKey = key; best = o;
+                    }
+                }
+                return best ? (best.desig || best.id) : null;
+            }
+            function makeCatLayer(cat) {
+                const layer = A.catalog({
+                    name: 'cat-' + cat, sourceSize: cat === 'N' ? 7 : 9, shape: 'circle',
+                    color: catColors[cat], displayLabel: cat !== 'N',   // NGC has too many for labels
+                    labelColumn: 'name', labelColor: catColors[cat], labelFont: '10px sans-serif'
+                });
+                aladin.addCatalog(layer);
+                return layer;
+            }
+            function populateCatLayer(cat) {
+                const layer = catLayers[cat];
+                if (!layer) return;
+                layer.removeAll();
+                const src = [];
+                for (const o of (catByCat[cat] || [])) {
+                    if (catTodo[cat] && o.done) continue;
+                    src.push(A.source(o.ra, o.dec, { name: o.id }));
+                }
+                if (src.length) layer.addSources(src);
+            }
+            function ensureCatLayer(cat) {                     // (re)build in current color
+                if (catLayers[cat]) {
+                    try { aladin.removeOverlay(catLayers[cat]); }
+                    catch (e) { try { catLayers[cat].hide(); } catch (e2) {} }
+                }
+                catLayers[cat] = makeCatLayer(cat);
+                populateCatLayer(cat);
+            }
+            function applyCatVis() {
+                for (const cat of ['M', 'C', 'N']) {
+                    if (catShow[cat]) {
+                        if (!catLayers[cat]) ensureCatLayer(cat);
+                        try { catLayers[cat].show(); } catch (e) {}
+                    } else if (catLayers[cat]) {
+                        try { catLayers[cat].hide(); } catch (e) {}
+                    }
+                }
+            }
             async function ensureCatalog() {
-                if (catalogData) { applyCatalogVis(); return; }
                 const body = document.getElementById('catalog-body');
                 if (!SETTINGS.catalogPresent) { body.textContent = 'Catalog file missing — run generate_catalog.py.'; return; }
-                body.textContent = 'Loading catalog…';
-                try {
-                    const r = await fetch(SETTINGS.catalogFile);
-                    catalogData = await r.json();
-                } catch (e) { body.textContent = 'Could not load catalog.'; return; }
-                for (const o of catalogData) o.done = clusterCoversPoint(o.ra, o.dec);
-                buildCatalogOverlays();
+                if (!catalogData) {
+                    body.textContent = 'Loading catalog…';
+                    try { await loadCatalogData(); } catch (e) { body.textContent = 'Could not load catalog.'; return; }
+                }
                 renderCatalogPanel();
-                applyCatalogVis();
-            }
-            function buildCatalogOverlays() {
-                const mk = (color) => { const c = A.catalog({ name: 'cat', sourceSize: 9, shape: 'circle',
-                    color: color, displayLabel: true, labelColumn: 'name', labelColor: color, labelFont: '10px sans-serif' });
-                    aladin.addCatalog(c); return c; };
-                catLayers = { M: { done: mk('#5d5'), todo: mk('#888') }, C: { done: mk('#5d5'), todo: mk('#888') } };
-                for (const o of catalogData)
-                    catLayers[o.cat][o.done ? 'done' : 'todo'].addSources([A.source(o.ra, o.dec, { name: o.id })]);
-            }
-            function applyCatalogVis() {
-                if (!catLayers) return;
-                const showM = document.getElementById('cat-m').checked;
-                const showC = document.getElementById('cat-c').checked;
-                const todoOnly = document.getElementById('cat-todo').checked;
-                const set = (layer, on) => { try { on ? layer.show() : layer.hide(); } catch (e) {} };
-                set(catLayers.M.done, showM && !todoOnly);
-                set(catLayers.M.todo, showM);
-                set(catLayers.C.done, showC && !todoOnly);
-                set(catLayers.C.todo, showC);
+                applyCatVis();
             }
             function renderCatalogPanel() {
-                const mDone = catalogData.filter(o => o.cat === 'M' && o.done).length;
-                const mAll = catalogData.filter(o => o.cat === 'M').length;
-                const cDone = catalogData.filter(o => o.cat === 'C' && o.done).length;
-                const cAll = catalogData.filter(o => o.cat === 'C').length;
+                const tabs = ['M', 'C', 'N'].map(cat =>
+                    '<button class="cat-tab' + (cat === catTab ? ' active' : '') + '" data-cat="' + cat + '">' +
+                    CAT_LABEL[cat] + '</button>').join('');
+                const objs = catByCat[catTab] || [];
+                const done = objs.filter(o => o.done).length;
                 document.getElementById('catalog-body').innerHTML =
-                    '<div class="cat-toggles">' +
-                    '<label class="checkbox-container"><input type="checkbox" id="cat-m" checked> Messier</label>' +
-                    '<label class="checkbox-container"><input type="checkbox" id="cat-c" checked> Caldwell</label>' +
-                    '<label class="checkbox-container"><input type="checkbox" id="cat-todo"> Only to-do</label>' +
+                    '<div class="cat-tabs">' + tabs + '</div>' +
+                    '<div class="cat-ctrls">' +
+                    '<input type="color" id="cat-color" value="' + catColors[catTab] + '" title="Marker & label color">' +
+                    '<label class="checkbox-container"><input type="checkbox" id="cat-show"' + (catShow[catTab] ? ' checked' : '') + '> Show on map</label>' +
+                    '<label class="checkbox-container"><input type="checkbox" id="cat-todo"' + (catTodo[catTab] ? ' checked' : '') + '> Only to-do</label>' +
                     '</div>' +
-                    '<div class="cat-prog">Messier <span class="pct">' + mDone + '/' + mAll + '</span> &nbsp; ' +
-                    'Caldwell <span class="pct">' + cDone + '/' + cAll + '</span></div>' +
+                    '<div class="cat-prog">' + CAT_LABEL[catTab] + ' <span class="pct">' + done + '/' + objs.length + '</span> imaged</div>' +
                     '<div id="catalog-list"></div>';
-                ['cat-m', 'cat-c', 'cat-todo'].forEach(id => document.getElementById(id)
-                    .addEventListener('change', () => { applyCatalogVis(); renderCatalogList(); }));
+                document.querySelectorAll('.cat-tab').forEach(b => b.addEventListener('click', () => {
+                    catTab = b.dataset.cat; renderCatalogPanel(); saveState();
+                }));
+                document.getElementById('cat-color').addEventListener('change', e => {
+                    catColors[catTab] = e.target.value;
+                    if (catShow[catTab]) ensureCatLayer(catTab);   // recreate in the new color
+                    saveState();
+                });
+                document.getElementById('cat-show').addEventListener('change', e => {
+                    catShow[catTab] = e.target.checked; applyCatVis(); saveState();
+                });
+                document.getElementById('cat-todo').addEventListener('change', e => {
+                    catTodo[catTab] = e.target.checked;
+                    if (catLayers[catTab]) populateCatLayer(catTab);
+                    renderCatalogList(); saveState();
+                });
                 renderCatalogList();
             }
             function renderCatalogList() {
-                const showM = document.getElementById('cat-m').checked;
-                const showC = document.getElementById('cat-c').checked;
-                const todoOnly = document.getElementById('cat-todo').checked;
+                const objs = catByCat[catTab] || [];
+                const todo = catTodo[catTab];
                 const list = document.getElementById('catalog-list');
                 const frag = document.createDocumentFragment();
-                for (const o of catalogData) {
-                    if (o.cat === 'M' && !showM) continue;
-                    if (o.cat === 'C' && !showC) continue;
-                    if (todoOnly && o.done) continue;
+                let n = 0;
+                for (const o of objs) {
+                    if (todo && o.done) continue;
+                    if (++n > 1500) {                          // cap rows so the huge NGC list stays responsive
+                        const more = document.createElement('div');
+                        more.className = 'muted'; more.style.padding = '4px 2px';
+                        more.textContent = '…' + (objs.length - 1500) + ' more — use “Only to-do” to narrow the list.';
+                        frag.appendChild(more); break;
+                    }
                     const row = document.createElement('div');
                     row.className = 'cat-row ' + (o.done ? 'done' : 'todo');
                     row.innerHTML = '<span class="ck">' + (o.done ? '✓' : '○') + '</span>' +
-                        '<span>' + esc(o.id) + (o.common ? ' · ' + esc(o.common) : ' · ' + esc(o.desig)) +
+                        '<span>' + esc(o.desig || o.id) + (o.common ? ' · ' + esc(o.common) : '') +
                         ' <span style="color:#777">(' + esc(o.otype) + ')</span></span>';
                     row.addEventListener('click', () => { aladin.gotoRaDec(o.ra, o.dec); aladin.setFov(2.5); });
                     frag.appendChild(row);
@@ -2169,13 +2266,65 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 a.href = URL.createObjectURL(blob); a.download = filename; a.click();
                 URL.revokeObjectURL(a.href);
             }
-            function ninaTargetCSV(name, ra, dec) {
-                // Telescopius-style target list — importable via NINA's Telescopius CSV import
-                const raS = raToHms(ra).replace(/\s+/g, '');
-                const decS = decToDms(dec).replace(/\s+/g, '');
-                const esccsv = v => '"' + String(v).replace(/"/g, '""') + '"';
-                return 'Familiar Name,Catalogue Entry,Right Ascension,Declination\n' +
-                    [name, name, raS, decS].map(esccsv).join(',') + '\n';
+            function raParts(raDeg) {
+                let t = ((raDeg % 360) + 360) % 360 / 15, h = Math.floor(t);
+                let mf = (t - h) * 60, m = Math.floor(mf), s = Math.round((mf - m) * 60 * 100) / 100;
+                if (s >= 60) { s -= 60; m++; } if (m >= 60) { m -= 60; h++; } h %= 24;
+                return [h, m, s];
+            }
+            function decParts(decDeg) {
+                const neg = decDeg < 0; let a = Math.abs(decDeg), d = Math.floor(a);
+                let mf = (a - d) * 60, m = Math.floor(mf), s = Math.round((mf - m) * 60 * 100) / 100;
+                if (s >= 60) { s -= 60; m++; } if (m >= 60) { m -= 60; d++; }
+                return [neg, d, m, s];
+            }
+            // NINA Advanced Sequencer target (.json) — same schema as a target exported
+            // from NINA, so it imports directly into the sequencer.
+            function ninaTargetJSON(name, ra, dec) {
+                const [rh, rm, rs] = raParts(ra), [neg, dd, dm, ds] = decParts(dec);
+                const obj = {
+                    "$id": "1", "$type": "NINA.Sequencer.Container.DeepSkyObjectContainer, NINA.Sequencer",
+                    "Target": {
+                        "$id": "2", "$type": "NINA.Astrometry.InputTarget, NINA.Astrometry",
+                        "Expanded": true, "TargetName": name, "PositionAngle": 0.0,
+                        "InputCoordinates": {
+                            "$id": "3", "$type": "NINA.Astrometry.InputCoordinates, NINA.Astrometry",
+                            "RAHours": rh, "RAMinutes": rm, "RASeconds": rs,
+                            "NegativeDec": neg, "DecDegrees": dd, "DecMinutes": dm, "DecSeconds": ds
+                        }
+                    },
+                    "ExposureInfoListExpanded": false,
+                    "ExposureInfoList": { "$id": "4", "$type": "NINA.Core.Utility.AsyncObservableCollection`1[[NINA.Sequencer.Utility.ExposureInfo, NINA.Sequencer]], NINA.Core", "$values": [] },
+                    "Strategy": { "$type": "NINA.Sequencer.Container.ExecutionStrategy.SequentialStrategy, NINA.Sequencer" },
+                    "Name": name,
+                    "Conditions": { "$id": "5", "$type": "System.Collections.ObjectModel.ObservableCollection`1[[NINA.Sequencer.Conditions.ISequenceCondition, NINA.Sequencer]], System.ObjectModel", "$values": [] },
+                    "IsExpanded": true,
+                    "Items": {
+                        "$id": "6", "$type": "System.Collections.ObjectModel.ObservableCollection`1[[NINA.Sequencer.SequenceItem.ISequenceItem, NINA.Sequencer]], System.ObjectModel",
+                        "$values": [{
+                            "$id": "7", "$type": "NINA.Sequencer.SequenceItem.Imaging.TakeExposure, NINA.Sequencer",
+                            "ExposureTime": 60.0, "Gain": -1, "Offset": -1,
+                            "Binning": { "$id": "8", "$type": "NINA.Core.Model.Equipment.BinningMode, NINA.Core", "X": 1, "Y": 1 },
+                            "ImageType": "LIGHT", "ExposureCount": 0, "Parent": { "$ref": "1" }, "ErrorBehavior": 0, "Attempts": 1
+                        }]
+                    },
+                    "Triggers": { "$id": "9", "$type": "System.Collections.ObjectModel.ObservableCollection`1[[NINA.Sequencer.Trigger.ISequenceTrigger, NINA.Sequencer]], System.ObjectModel", "$values": [] },
+                    "Parent": null, "ErrorBehavior": 0, "Attempts": 1
+                };
+                return JSON.stringify(obj, null, 2);
+            }
+            async function saveNinaTarget(ra, dec) {
+                // Use a known catalog object's name if the point is on one; otherwise ask.
+                try { await loadCatalogData(); } catch (e) {}
+                let name = nearbyCatalogName(ra, dec);
+                if (!name) {
+                    name = prompt('Object name for the NINA target:', '');
+                    if (name === null) return;            // cancelled
+                    name = name.trim() || 'Sky point';
+                }
+                const fname = name.replace(/[\\/:*?"<>|]/g, '').trim() + '.json';
+                downloadText(fname, ninaTargetJSON(name, ra, dec), 'application/json');
+                toastMsg('Saved NINA target: ' + name);
             }
 
             // ================= plan popup (click empty sky in plan mode) =================
@@ -2190,7 +2339,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                     '<div id="plan-alt-info" class="muted"></div>' +
                     '<div id="plan-where" class="muted">…</div>' +
                     '<button class="search-btn" id="plan-copy" style="width:100%;margin-top:8px;">Copy coordinates</button>' +
-                    '<button class="search-btn" id="plan-nina" style="width:100%;margin-top:6px;">Download NINA target (CSV)</button>';
+                    '<button class="search-btn" id="plan-nina" style="width:100%;margin-top:6px;">Save NINA target (.json)</button>';
                 const cv = document.getElementById('plan-alt');
                 cv.width = cv.clientWidth || 296; cv.height = 120;
                 const r = altitudeCurve(cv, ra, dec);
@@ -2201,11 +2350,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                     navigator.clipboard.writeText(ra.toFixed(6) + ', ' + dec.toFixed(6))
                         .then(() => toastMsg('Copied coordinates')).catch(() => {});
                 });
-                document.getElementById('plan-nina').addEventListener('click', () => {
-                    const nm = 'SkyMap ' + raToHms(ra).replace(/\s+/g, '') + decToDms(dec).replace(/\s+/g, '');
-                    downloadText('nina_target.csv', ninaTargetCSV(nm, ra, dec), 'text/csv');
-                    toastMsg('NINA target CSV downloaded');
-                });
+                document.getElementById('plan-nina').addEventListener('click', () => saveNinaTarget(ra, dec));
                 fetch('/api/objectinfo?ra=' + ra + '&dec=' + dec).then(r => r.json()).then(info => {
                     const w = document.getElementById('plan-where');
                     if (!w) return;
@@ -2256,7 +2401,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                         folderPanelY: foldersPanel.offsetTop,
                         openPanels: Array.from(openPanels).filter(n => n !== 'plan'),
                         planMode: planMode,
-                        panelPos: panelPos
+                        panelPos: panelPos,
+                        catColors: catColors,
+                        catShow: catShow,
+                        catTodo: catTodo,
+                        catTab: catTab
                     }));
                 } catch (e) {}
             }
@@ -2305,6 +2454,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                     planMode = s.planMode;
                     planBtn.classList.toggle('active', planMode);
                 }
+                if (s.catColors) Object.assign(catColors, s.catColors);
+                if (s.catShow) Object.assign(catShow, s.catShow);
+                if (s.catTodo) Object.assign(catTodo, s.catTodo);
+                if (s.catTab && CAT_LABEL[s.catTab]) catTab = s.catTab;
             }
 
             restoreState();
