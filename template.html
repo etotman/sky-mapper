@@ -1315,12 +1315,50 @@
                 }
                 return best ? (best.desig || best.id) : null;
             }
+            // GI750 markers are drawn by score so the best targets stand out: higher
+            // scores are brighter (more opaque) and slightly larger. Everything is
+            // derived from the root color (catColors.G), so the color picker still
+            // works; score 1 keeps a visible floor opacity.
+            function giScoreStyle(score) {
+                const s = Math.max(1, Math.min(5, score || 1));
+                return {
+                    alpha: 0.4 + (s - 1) / 4 * 0.6,   // 0.40 (score 1) … 1.0 (score 5)
+                    radius: 4 + (s - 1) * 1.1,        // 4px … 8.4px
+                    font: Math.round(9 + (s - 1) * 0.9) + 'px sans-serif'   // 9px … 13px
+                };
+            }
+            function giDrawSource(source, ctx) {
+                if (source.x === undefined) return;   // off-screen sources have no canvas pos
+                const st = giScoreStyle(source.data && source.data.score);
+                ctx.save();
+                ctx.globalAlpha = st.alpha;
+                ctx.strokeStyle = catColors.G;
+                ctx.fillStyle = catColors.G;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.arc(source.x, source.y, st.radius, 0, 2 * Math.PI);
+                ctx.stroke();
+                // Labels only when zoomed in enough (matches the footprint label rule),
+                // otherwise 750 names overlap into noise at wide fields.
+                let fovWide = false;
+                try { fovWide = aladin.getFov()[0] > SETTINGS.labelHideFov; } catch (e) {}
+                if (!fovWide && source.data && source.data.name) {
+                    ctx.font = st.font;
+                    ctx.fillText(source.data.name, source.x + st.radius + 3, source.y + 4);
+                }
+                ctx.restore();
+            }
             function makeCatLayer(cat) {
-                const layer = A.catalog({
-                    name: 'cat-' + cat, sourceSize: 9, shape: 'circle',
-                    color: catColors[cat], displayLabel: true,
+                const opts = {
+                    name: 'cat-' + cat, sourceSize: 9, color: catColors[cat],
                     labelColumn: 'name', labelColor: catColors[cat], labelFont: '10px sans-serif'
-                });
+                };
+                if (cat === 'G') {                    // per-source draw handles markers + labels
+                    opts.shape = giDrawSource; opts.displayLabel = false;
+                } else {
+                    opts.shape = 'circle'; opts.displayLabel = true;
+                }
+                const layer = A.catalog(opts);
                 aladin.addCatalog(layer);
                 return layer;
             }
@@ -1334,7 +1372,9 @@
                     if (cat === 'G' && (o.score || 0) < catScoreMin) continue;
                     // GI750 uses the real object name as its label; M/C keep their
                     // recognizable catalog ids (M1, C11) rather than the resolved desig.
-                    src.push(A.source(o.ra, o.dec, { name: cat === 'G' ? (o.desig || o.id) : o.id }));
+                    src.push(cat === 'G'
+                        ? A.source(o.ra, o.dec, { name: o.desig || o.id, score: o.score })
+                        : A.source(o.ra, o.dec, { name: o.id }));
                 }
                 if (src.length) layer.addSources(src);
             }
