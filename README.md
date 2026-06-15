@@ -82,7 +82,9 @@ length** and **sensor width/height** (mm) and a **rotation angle**, and Framing 
 draws an outline of your camera's exact field of view, fixed at the center of the
 screen — pan and zoom the sky behind it to frame the target. The outline tracks the
 map's zoom level, shows the resulting FOV in degrees and arcminutes, has its own
-**color picker**, and remembers your settings between sessions.
+**color picker**, and remembers your settings between sessions. **Name and save**
+configurations (e.g. one per camera/scope combination) and pick from the saved list
+with one click; saved settings can be deleted at any time.
 
 ### Everything else
 - **"Available tonight" outline** — draws the region of sky that climbs above your

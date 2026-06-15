@@ -174,6 +174,19 @@
                                      padding: 4px 6px; border-radius: 4px; font-size: 12px; }
         .fr-row input[type=color] { width: 40px; height: 24px; padding: 0; border: 1px solid #444;
                                     background: #222; border-radius: 4px; cursor: pointer; }
+        #fr-save-row { display: flex; gap: 6px; margin-top: 10px; border-top: 1px solid #333; padding-top: 10px; }
+        #fr-name { flex: 1; min-width: 0; background: #222; color: white; border: 1px solid #444;
+                   padding: 5px 6px; border-radius: 4px; font-size: 12px; }
+        #fr-presets { margin-top: 8px; }
+        .fr-preset-row { display: flex; align-items: center; gap: 6px; padding: 3px 4px;
+                         border-radius: 3px; cursor: pointer; font-size: 12px; }
+        .fr-preset-row:hover { background: rgba(255,255,255,0.08); }
+        .fr-pswatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+        .fr-pname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .fr-pdims { color: #888; font-size: 10px; flex-shrink: 0; }
+        .fr-preset-del { background: none; border: none; color: #a66; cursor: pointer;
+                         font-size: 13px; padding: 0 4px; flex-shrink: 0; }
+        .fr-preset-del:hover { color: #f88; }
     </style>
 </head>
 <body>
@@ -295,6 +308,11 @@
             <div class="fr-row"><label>Outline color</label><input type="color" id="fr-color" value="#ffff00"></div>
             <div style="margin:8px 0 4px;"><label class="checkbox-container"><input type="checkbox" id="fr-active"> Show on map</label></div>
             <div id="fr-fov-info" class="muted" style="font-size:11px;min-height:14px;"></div>
+            <div id="fr-save-row">
+                <input type="text" id="fr-name" placeholder="Name these settings…">
+                <button id="fr-save" class="search-btn">Save</button>
+            </div>
+            <div id="fr-presets"></div>
         </div>
     </div>
 
@@ -1723,6 +1741,72 @@
                 document.getElementById(id).addEventListener('input', () => { updateFramingRect(); saveState(); });
             }
 
+            // ---------- framing presets: named, saveable configurations ----------
+            let framingPresets = [];
+            function applyFramingPreset(p) {
+                document.getElementById('fr-focal').value = p.focal;
+                document.getElementById('fr-sw').value    = p.sw;
+                document.getElementById('fr-sh').value    = p.sh;
+                document.getElementById('fr-rot').value   = p.rot;
+                document.getElementById('fr-color').value = p.color || '#ffff00';
+                document.getElementById('fr-active').checked = true;
+                updateFramingRect();
+                saveState();
+            }
+            function renderFramingPresets() {
+                const box = document.getElementById('fr-presets');
+                if (!box) return;
+                if (!framingPresets.length) {
+                    box.innerHTML = '<div class="muted" style="font-size:11px;">No saved settings yet.</div>';
+                    return;
+                }
+                const frag = document.createDocumentFragment();
+                framingPresets.forEach((p, i) => {
+                    const row = document.createElement('div');
+                    row.className = 'fr-preset-row';
+                    row.title = 'Click to load these settings';
+                    row.innerHTML =
+                        '<span class="fr-pswatch" style="background:' + esc(p.color || '#ffff00') + '"></span>' +
+                        '<span class="fr-pname">' + esc(p.name) + '</span>' +
+                        '<span class="fr-pdims">' + esc(p.focal) + 'mm · ' + esc(p.sw) + '×' + esc(p.sh) + '</span>' +
+                        '<button class="fr-preset-del" title="Delete this setting">✕</button>';
+                    row.addEventListener('click', (e) => {
+                        if (e.target.classList.contains('fr-preset-del')) return;
+                        applyFramingPreset(p);
+                    });
+                    row.querySelector('.fr-preset-del').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        framingPresets.splice(i, 1);
+                        renderFramingPresets();
+                        saveState();
+                    });
+                    frag.appendChild(row);
+                });
+                box.innerHTML = '';
+                box.appendChild(frag);
+            }
+            document.getElementById('fr-save').addEventListener('click', () => {
+                const nameEl = document.getElementById('fr-name');
+                const name = nameEl.value.trim();
+                if (!name) { toastMsg('Enter a name for these settings'); return; }
+                const focal = document.getElementById('fr-focal').value;
+                const sw = document.getElementById('fr-sw').value;
+                const sh = document.getElementById('fr-sh').value;
+                if (!focal || !sw || !sh) { toastMsg('Enter focal length and sensor size first'); return; }
+                const preset = { name, focal, sw, sh,
+                    rot: document.getElementById('fr-rot').value || '0',
+                    color: document.getElementById('fr-color').value };
+                const at = framingPresets.findIndex(p => p.name.toLowerCase() === name.toLowerCase());
+                if (at >= 0) framingPresets[at] = preset; else framingPresets.push(preset);
+                nameEl.value = '';
+                renderFramingPresets();
+                saveState();
+                toastMsg((at >= 0 ? 'Updated' : 'Saved') + ' framing: ' + name);
+            });
+            document.getElementById('fr-name').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') document.getElementById('fr-save').click();
+            });
+
             // ---------- remember UI state between sessions ----------
             function saveState() {
                 try {
@@ -1755,7 +1839,8 @@
                         framingShMm:   document.getElementById('fr-sh').value,
                         framingRot:    document.getElementById('fr-rot').value,
                         framingColor:  document.getElementById('fr-color').value,
-                        framingActive: document.getElementById('fr-active').checked
+                        framingActive: document.getElementById('fr-active').checked,
+                        framingPresets: framingPresets
                     }));
                 } catch (e) {}
             }
@@ -1815,10 +1900,13 @@
                 if (s.framingRot !== undefined) document.getElementById('fr-rot').value = s.framingRot;
                 if (s.framingColor) document.getElementById('fr-color').value = s.framingColor;
                 if (s.framingActive) document.getElementById('fr-active').checked = true;
+                if (Array.isArray(s.framingPresets)) framingPresets = s.framingPresets;
+                renderFramingPresets();
                 updateFramingRect();
             }
 
             restoreState();
+            renderFramingPresets();
             applyPanels();
             if (openPanels.has('stats')) renderStats();
             if (openPanels.has('catalog')) ensureCatalog();
