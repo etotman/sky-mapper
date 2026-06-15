@@ -162,6 +162,18 @@
 
         /* plan */
         #plan-alt { width: 100%; height: 120px; background: #0a0a12; border-radius: 4px; display: block; }
+
+        /* framing assist */
+        #framing-rect {
+            position: fixed; top: 50%; left: 50%; pointer-events: none;
+            border: 2px solid #ffff00; box-sizing: border-box; display: none; z-index: 50;
+        }
+        .fr-row { display: flex; align-items: center; gap: 6px; margin: 5px 0; font-size: 12px; }
+        .fr-row label { width: 140px; color: #aaa; flex-shrink: 0; }
+        .fr-row input[type=number] { width: 80px; background: #222; color: white; border: 1px solid #444;
+                                     padding: 4px 6px; border-radius: 4px; font-size: 12px; }
+        .fr-row input[type=color] { width: 40px; height: 24px; padding: 0; border: 1px solid #444;
+                                    background: #222; border-radius: 4px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -173,6 +185,7 @@
         <button class="menu-btn" data-panel="catalog">Catalog</button>
         <button class="menu-btn" id="plan-mode-btn" title="When on, clicking empty sky opens a planning popup for that point">Plan mode</button>
         <button class="menu-btn" id="poster-btn" title="Download the current map view as a PNG">Export poster</button>
+        <button class="menu-btn" data-panel="framing" title="Draw your sensor FOV centered on the map — scroll the sky behind it to plan framing">Framing Assist</button>
     </div>
 
     <div id="controls">
@@ -271,6 +284,21 @@
         <div class="panel-head" data-drag="plan"><h3>Plan point</h3><button class="panel-x" data-panel="plan">✕</button></div>
         <div class="panel-body" id="plan-body"></div>
     </div>
+
+    <div id="framing" class="panel" style="width:290px;">
+        <div class="panel-head" data-drag="framing"><h3>Framing Assist</h3><button class="panel-x" data-panel="framing">✕</button></div>
+        <div class="panel-body">
+            <div class="fr-row"><label>Focal length (mm)</label><input type="number" id="fr-focal" min="1" max="20000" step="1" placeholder="e.g. 800"></div>
+            <div class="fr-row"><label>Sensor width (mm)</label><input type="number" id="fr-sw" min="0.1" max="200" step="0.1" placeholder="e.g. 23.5"></div>
+            <div class="fr-row"><label>Sensor height (mm)</label><input type="number" id="fr-sh" min="0.1" max="200" step="0.1" placeholder="e.g. 15.6"></div>
+            <div class="fr-row"><label>Rotation (° clockwise)</label><input type="number" id="fr-rot" min="-360" max="360" step="1" placeholder="0"></div>
+            <div class="fr-row"><label>Outline color</label><input type="color" id="fr-color" value="#ffff00"></div>
+            <div style="margin:8px 0 4px;"><label class="checkbox-container"><input type="checkbox" id="fr-active"> Show on map</label></div>
+            <div id="fr-fov-info" class="muted" style="font-size:11px;min-height:14px;"></div>
+        </div>
+    </div>
+
+    <div id="framing-rect"></div>
 
     <div id="details-panel"></div>
     <div id="toast"></div>
@@ -573,7 +601,7 @@
                     try { hide ? l.catalog.hide() : l.catalog.show(); } catch (e) {}
                 }
             }
-            try { aladin.on('zoomChanged', updateLabelVisibility); } catch (e) {}
+            try { aladin.on('zoomChanged', () => { updateLabelVisibility(); updateFramingRect(); }); } catch (e) {}
 
             // ---------- details panel ----------
             function findClusterAt(ra, dec) {
@@ -1187,6 +1215,7 @@
                 stats:    { el: document.getElementById('stats'),     show: 'flex' },
                 catalog:  { el: document.getElementById('catalog'),   show: 'flex' },
                 plan:     { el: document.getElementById('plan'),      show: 'flex' },
+                framing:  { el: document.getElementById('framing'),   show: 'flex' },
             };
             const openPanels = new Set(['controls']);
             let planMode = false;
@@ -1203,6 +1232,7 @@
                 stats:   () => [Math.max(360, window.innerWidth - 340), 46],
                 catalog: () => [Math.max(360, window.innerWidth - 340), 46],
                 plan:    () => [Math.round(window.innerWidth / 2 - 160), 80],
+                framing: () => [Math.max(360, window.innerWidth - 310), 46],
             };
             function placeGeneric(name) {
                 const el = PANELS[name].el;
@@ -1659,6 +1689,40 @@
                 const a = document.createElement('a'); a.href = href; a.download = name; a.click();
             }
 
+            // ================= framing assist =================
+            function updateFramingRect() {
+                const rect = document.getElementById('framing-rect');
+                if (!rect) return;
+                const active = document.getElementById('fr-active').checked;
+                if (!active) { rect.style.display = 'none'; return; }
+                const fl  = parseFloat(document.getElementById('fr-focal').value);
+                const sw  = parseFloat(document.getElementById('fr-sw').value);
+                const sh  = parseFloat(document.getElementById('fr-sh').value);
+                const rot = parseFloat(document.getElementById('fr-rot').value) || 0;
+                const info = document.getElementById('fr-fov-info');
+                if (!fl || !sw || !sh || fl <= 0 || sw <= 0 || sh <= 0) {
+                    rect.style.display = 'none';
+                    if (info) info.textContent = 'Enter focal length and sensor size.';
+                    return;
+                }
+                const fovWDeg = 2 * Math.atan(sw / (2 * fl)) * R2D;
+                const fovHDeg = 2 * Math.atan(sh / (2 * fl)) * R2D;
+                let fov;
+                try { fov = aladin.getFov(); } catch (e) { return; }
+                // px/deg scale is uniform at the map centre; width axis gives the best reading.
+                const scale = window.innerWidth / fov[0];
+                rect.style.width  = (fovWDeg * scale) + 'px';
+                rect.style.height = (fovHDeg * scale) + 'px';
+                rect.style.borderColor = document.getElementById('fr-color').value;
+                rect.style.transform = 'translate(-50%, -50%) rotate(' + rot + 'deg)';
+                rect.style.display = 'block';
+                if (info) info.textContent = fovWDeg.toFixed(2) + '° × ' + fovHDeg.toFixed(2) +
+                    '°  (' + Math.round(fovWDeg * 60) + '′ × ' + Math.round(fovHDeg * 60) + '′)';
+            }
+            for (const id of ['fr-focal', 'fr-sw', 'fr-sh', 'fr-rot', 'fr-color', 'fr-active']) {
+                document.getElementById(id).addEventListener('input', () => { updateFramingRect(); saveState(); });
+            }
+
             // ---------- remember UI state between sessions ----------
             function saveState() {
                 try {
@@ -1685,7 +1749,13 @@
                         catShow: catShow,
                         catTodo: catTodo,
                         catTab: catTab,
-                        catScoreMin: catScoreMin
+                        catScoreMin: catScoreMin,
+                        framingFocal:  document.getElementById('fr-focal').value,
+                        framingSwMm:   document.getElementById('fr-sw').value,
+                        framingShMm:   document.getElementById('fr-sh').value,
+                        framingRot:    document.getElementById('fr-rot').value,
+                        framingColor:  document.getElementById('fr-color').value,
+                        framingActive: document.getElementById('fr-active').checked
                     }));
                 } catch (e) {}
             }
@@ -1739,6 +1809,13 @@
                 if (s.catTodo) Object.assign(catTodo, s.catTodo);
                 if (s.catTab && CAT_LABEL[s.catTab]) catTab = s.catTab;
                 if (s.catScoreMin >= 1 && s.catScoreMin <= 5) catScoreMin = s.catScoreMin;
+                if (s.framingFocal) document.getElementById('fr-focal').value = s.framingFocal;
+                if (s.framingSwMm)  document.getElementById('fr-sw').value  = s.framingSwMm;
+                if (s.framingShMm)  document.getElementById('fr-sh').value  = s.framingShMm;
+                if (s.framingRot !== undefined) document.getElementById('fr-rot').value = s.framingRot;
+                if (s.framingColor) document.getElementById('fr-color').value = s.framingColor;
+                if (s.framingActive) document.getElementById('fr-active').checked = true;
+                updateFramingRect();
             }
 
             restoreState();

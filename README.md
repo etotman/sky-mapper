@@ -76,6 +76,14 @@ Turn on **Plan mode** and click any patch of sky to get a planning popup:
   sequencer‑target file (named after the catalog object if you clicked one, else it
   prompts you for a name) that imports straight into N.I.N.A.'s Advanced Sequencer.
 
+### Framing Assist
+Plan your next shot's composition right on the map. Enter your **effective focal
+length** and **sensor width/height** (mm) and a **rotation angle**, and Framing Assist
+draws an outline of your camera's exact field of view, fixed at the center of the
+screen — pan and zoom the sky behind it to frame the target. The outline tracks the
+map's zoom level, shows the resulting FOV in degrees and arcminutes, has its own
+**color picker**, and remembers your settings between sessions.
+
 ### Everything else
 - **"Available tonight" outline** — draws the region of sky that climbs above your
   minimum altitude during tonight's darkness, plus a dashed **midnight‑meridian** line.
