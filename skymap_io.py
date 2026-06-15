@@ -151,8 +151,12 @@ def get_fits_data(filepath: str) -> dict:
             elif filename_is_calibration(filepath):
                 return {'skip': 'calibration'}
 
-            ra_val  = _first(header, 'RA', 'OBJCTRA')
-            dec_val = _first(header, 'DEC', 'OBJCTDEC')
+            # Prefer the catalog target coordinates (OBJCTRA/OBJCTDEC) over the
+            # mount-reported RA/DEC: the latter carries the mount's pointing error
+            # (seen up to ~0.5° on un-plate-solved frames). A solved WCS, when
+            # present, still wins over both (handled below).
+            ra_val  = _first(header, 'OBJCTRA', 'RA')
+            dec_val = _first(header, 'OBJCTDEC', 'DEC')
             solved = None
             if header.get('CRVAL1') is not None and header.get('CRVAL2') is not None:
                 try:
