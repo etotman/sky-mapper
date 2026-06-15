@@ -290,6 +290,7 @@
 
         const TONIGHT_COLOR = '#ffaa00';
         const LS_KEY = 'sky_mapper_ui_v2';
+        const D2R = Math.PI / 180, R2D = 180 / Math.PI;   // used from init-time onward
 
         A.init.then(() => {
             console.log("✅ Aladin Lite initialized");
@@ -302,12 +303,12 @@
                 showFullscreenControl: true,
                 showCooGrid: false
             });
-            // Open centered on tonight's meridian (north up, so it renders vertical).
+            // Open centered on the mid-dark meridian (north up, so it renders vertical).
             // Center declination at the observing latitude — the meridian's zenith — so
             // the view frames what's transiting overhead. Falls back to the data
             // centroid when no observing site is known.
             if (SETTINGS.lat !== null && SETTINGS.lon !== null) {
-                aladin.gotoRaDec(midnightMeridianRa(), SETTINGS.lat);
+                aladin.gotoRaDec(midDarkMeridianRa(), SETTINGS.lat);
             } else {
                 aladin.gotoRaDec(SETTINGS.initialRa, SETTINGS.initialDec);
             }
@@ -399,16 +400,24 @@
             }
 
             // ---------- "imageable tonight" altitude math ----------
-            const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+            // (D2R/R2D are declared at outer scope so init-time map centering,
+            //  which computes the dark window, can use them.)
             function julianDate(d) { return d.getTime() / 86400000 + 2440587.5; }
             function gmstDeg(jd) {
                 const d = jd - 2451545.0;
                 return (((280.46061837 + 360.98564736629 * d) % 360) + 360) % 360;
             }
-            // RA of the local meridian at tonight's midnight (= local sidereal time at
-            // 00:00). This is the hour circle the dashed "midnight meridian" line marks;
-            // the map opens centered on it. Needs SETTINGS.lon.
-            function midnightMeridianRa() {
+            // RA of the meridian at the midpoint of tonight's darkness — i.e. the
+            // hour circle that transits at astronomical midnight. The "available
+            // tonight" region is symmetric about this meridian, so the map opens
+            // centered on it and the dashed line marks it. Falls back to local clock
+            // midnight when there's no dark window (high-latitude summer). Needs lon.
+            function midDarkMeridianRa() {
+                const win = darkWindow().jds;
+                if (win.length) {
+                    const midJD = win[Math.floor(win.length / 2)];
+                    return ((gmstDeg(midJD) + SETTINGS.lon) % 360 + 360) % 360;
+                }
                 const mstart = new Date(); mstart.setHours(12, 0, 0, 0);
                 if (Date.now() < mstart.getTime()) mstart.setDate(mstart.getDate() - 1);
                 const jdMid = julianDate(new Date(mstart.getTime() + 12 * 3600 * 1000));
@@ -431,7 +440,15 @@
                 return Math.asin(Math.sin(lat) * Math.sin(dec)
                      + Math.cos(lat) * Math.cos(dec) * Math.cos(ha)) * R2D;
             }
-            function darkWindowJDs() {
+            // Tonight's dark window as { jds: [...], twilight: 'astro'|'nautical'|'none' }.
+            // Memoized and side-effect-free (no toasts) so it can be called at page
+            // load for map centering as well as when drawing the tonight outline.
+            // `var` (not `let`) so the memo is hoisted: midDarkMeridianRa() runs during
+            // init, above this declaration's source line, and would otherwise hit the
+            // temporal dead zone.
+            var _darkWin = null;
+            function darkWindow() {
+                if (_darkWin) return _darkWin;
                 // Tonight = local noon to local noon. Sample every 10 min, keep
                 // times when the sun is below -18° (fallback -12°).
                 const start = new Date();
@@ -445,8 +462,10 @@
                     if (alt < -18) astro.push(jd);
                     if (alt < -12) nautical.push(jd);
                 }
-                if (!astro.length && nautical.length) toastMsg('No astronomical dark tonight — using nautical twilight');
-                return astro.length ? astro : nautical;
+                _darkWin = astro.length ? { jds: astro, twilight: 'astro' }
+                         : nautical.length ? { jds: nautical, twilight: 'nautical' }
+                         : { jds: [], twilight: 'none' };
+                return _darkWin;
             }
 
             // The sky available tonight is the union of "altitude ≥ minAlt" caps
@@ -458,12 +477,14 @@
             let tonightOverlay = null;
             function ensureTonightOutline() {
                 if (tonightOverlay) { tonightOverlay.show(); return; }
-                const win = darkWindowJDs();
+                const dw = darkWindow();
+                const win = dw.jds;
                 if (!win.length) {
                     toastMsg('No darkness tonight at your site');
                     els.tonight.checked = false;
                     return;
                 }
+                if (dw.twilight === 'nautical') toastMsg('No astronomical dark tonight — using nautical twilight');
                 const lst0 = ((gmstDeg(win[0]) + SETTINGS.lon) % 360 + 360) % 360;
                 const lst1 = ((gmstDeg(win[win.length - 1]) + SETTINGS.lon) % 360 + 360) % 360;
                 const sweep = ((lst1 - lst0) % 360 + 360) % 360;
@@ -512,16 +533,16 @@
                 aladin.addOverlay(tonightOverlay);
                 tonightOverlay.add(A.polyline(pts, { color: TONIGHT_COLOR, lineWidth: 3 }));
 
-                // Thin dashed meridian at local midnight: the hour circle (constant
-                // RA = local sidereal time at 00:00) — objects near it transit ~midnight.
-                const lstMid = midnightMeridianRa();
+                // Thin dashed meridian at mid-dark: the hour circle that transits at
+                // astronomical midnight, centered on the available-tonight region.
+                const lstMid = midDarkMeridianRa();
                 // dashed = short segments with gaps (Aladin ignores per-shape lineDash)
                 for (let d = -87; d < 87; d += 6) {
                     tonightOverlay.add(A.polyline([[lstMid, d], [lstMid, d + 3]],
                         { color: TONIGHT_COLOR, lineWidth: 1 }));
                 }
 
-                toastMsg('Orange: sky above ' + SETTINGS.minAlt + '° tonight; dashed line = midnight meridian');
+                toastMsg('Orange: sky above ' + SETTINGS.minAlt + '° tonight; dashed line = mid-dark meridian');
             }
 
             // ---------- (re)draw all footprints + labels from current UI state ----------
