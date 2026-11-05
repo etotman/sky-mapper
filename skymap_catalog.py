@@ -75,7 +75,7 @@ def footprint_corners(ra, dec, fov_w, fov_h, rot, ndigits=6):
     return corners
 
 
-def build_cluster_payload(clusters: list) -> list:
+def build_cluster_payload(clusters: list, quality=None) -> list:
     payload = []
     for i, cl in enumerate(clusters):
         ra, dec = _vector_to_radec(cl['vsum'])
@@ -139,6 +139,9 @@ def build_cluster_payload(clusters: list) -> list:
             'alt': _median([m.get('alt') for m in members if m.get('alt') is not None], None),
             'airmass': _median([m.get('airmass') for m in members if m.get('airmass') is not None], None),
         })
+        if quality:
+            from skymap_quality import cluster_quality
+            payload[-1]['q'] = cluster_quality(members, *quality)
 
     # Same target name spread across several clusters = mosaic panels.
     name_spread = Counter(c['name'] for c in payload if c['name'] != 'Unknown Target')

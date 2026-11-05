@@ -8,6 +8,7 @@ from skymap_catalog import (cluster_by_distance, build_cluster_payload,
                             build_folder_data, build_stats)
 from skymap_web import (resolve_observer_site, ensure_constellation_data,
                         generate_aladin_html)
+import skymap_quality
 
 # =============================================================================
 # MAIN
@@ -107,6 +108,7 @@ def collect_entries(cache: dict) -> tuple[list, Counter]:
             continue
 
         e = dict(entry)
+        e['path'] = filepath           # for the depth/quality lookup; not sent to the page
         e['color'] = entry.get('color') or color_map.get(sd, default_color)
         e['rig'] = entry.get('rig') or rig_map.get(sd, '')
         entries.append(e)
@@ -132,9 +134,15 @@ def rebuild_catalog(only_rigs=None) -> dict:
     else:
         print("\nNo changes found. Using existing cache.")
 
+    quality = None
+    if QUALITY_ENABLED:
+        qc = skymap_quality.update_quality_cache(cache)
+        gm, file_group = skymap_quality.group_metrics(cache, qc)
+        quality = (gm, file_group, skymap_quality.references(gm))
+
     entries, skip_counts = collect_entries(cache)
     clusters = cluster_by_distance(entries, GROUPING_TOLERANCE_DEG)
-    payload = build_cluster_payload(clusters)
+    payload = build_cluster_payload(clusters, quality)
 
     print(f"\n🔭 {len(entries)} light frames → {len(payload)} clustered targets.")
     if skip_counts:
@@ -148,6 +156,13 @@ def rebuild_catalog(only_rigs=None) -> dict:
           f"{len(folder_data['footprints'])} unique footprints.")
 
     stats = build_stats(cache)
+    if quality:
+        deep = sorted((c for c in payload if c.get('q', {}).get('depth_mag') is not None),
+                      key=lambda c: -c['q']['depth_mag'])[:15]
+        stats['deepest'] = [{'name': c['name'], 'depth_mag': c['q']['depth_mag'],
+                             'cls': c['q']['depth_class'], 'grade': c['q'].get('grade'),
+                             'eff_hours': round(c['q']['classes'][c['q']['depth_class']]['eff_seconds'] / 3600, 1)}
+                            for c in deep]
 
     site_lat, site_lon = resolve_observer_site(entries)
     ensure_constellation_data()

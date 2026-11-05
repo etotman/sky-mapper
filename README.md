@@ -46,6 +46,26 @@ Click a footprint to open a details panel with:
 - **Reference data from SIMBAD** — object type, constellation, magnitudes, angular
   size, redshift/radial velocity, common names — with links out to SIMBAD and NED.
 
+### Depth, filter and quality per target
+Each target's details panel gets a **Depth & quality** section. It's measured from the
+pixels of a few sample frames per night (first, middle and last), not from headers.
+- **Filter class.** Taken from the `FILTER` keyword when there is one. For one-shot-colour
+  cameras without it, the filter is estimated from sky brightness: a dual-band filter
+  makes the green sky ~6× darker. The sky level is normalised for gain, focal ratio and
+  pixel size first.
+- **Effective time and depth.** Each frame counts as `t · (sky_ref/sky) · (FWHM_ref/FWHM)²`,
+  the time it would have taken under the rig's darkest-10% sky and median seeing.
+  Depth is `1.25·log10(effective hours)` in relative magnitudes, where +0 = one reference hour.
+- **Quality.** Median star FWHM (″) compared with the typical value for the same optics,
+  plus star elongation, sky brightness vs the darkest nights, and an A/B/C grade.
+- The Statistics panel lists the **deepest targets**, and the CSV export gains
+  depth and quality columns.
+
+Results are cached in `quality_cache.json`, so later runs only read new frames. The first
+run takes about 4 minutes for ~1,100 sample frames. Processed stacks are listed as
+"not measured" and never add depth. lz4-compressed XISF (NINA's default) needs the
+optional `lz4` package (`pip install lz4`). Set `QUALITY_ENABLED = False` to turn it off.
+
 ### Statistics dashboard
 ![Statistics dashboard](screenshots/statistics.jpg)
 

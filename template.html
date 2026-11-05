@@ -3,7 +3,32 @@
 <head>
     <meta charset="utf-8">
     <title>Astrophotography Sky Map</title>
-    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8"></script>
+    <script>
+        // Aladin Lite loader. CDS (Strasbourg) is tried first; if it hasn't answered in
+        // 8 s, a pinned build from jsDelivr is used instead and the base survey switches
+        // to ESA's DSS2 colour mirror (CDS also hosts the default surveys). The library is
+        // handed to the page through the promise, so a late CDS load can't swap it.
+        window.ALADIN_FALLBACK = false;
+        window.aladinReady = new Promise((resolve, reject) => {
+            let done = false;
+            const useMirror = () => {
+                if (done) return;
+                done = true; window.ALADIN_FALLBACK = true;
+                console.warn('CDS unreachable: loading Aladin Lite from jsDelivr, surveys from ESA');
+                import('https://cdn.jsdelivr.net/npm/aladin-lite@3.6.5/dist/aladin.js')
+                    .then(m => resolve(m.default), reject);
+            };
+            const s = document.createElement('script');
+            s.src = 'https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js';
+            s.charset = 'utf-8';
+            s.onload = () => { if (!done) { done = true; resolve(window.A); } };
+            s.onerror = useMirror;
+            document.head.appendChild(s);
+            setTimeout(useMirror, 8000);
+        });
+        // ESA mirror of DSS2 colour, used when CDS is down.
+        window.FALLBACK_SURVEY = 'https://skies.esac.esa.int/DSSColor/';
+    </script>
     <style>
         body { margin: 0; padding: 0; background-color: #111; color: white; font-family: sans-serif; }
         #aladin-lite-div { width: 100vw; height: 100vh; }
@@ -49,6 +74,9 @@
 
         .ref-data { margin-top: 10px; border-top: 1px solid #444; padding-top: 8px; }
         .ref-head { font-size: 12px; font-weight: bold; color: #cdd; margin-bottom: 4px; }
+        .depth-q { margin-top: 8px; padding-top: 6px; border-top: 1px solid #333; }
+        .grade { display: inline-block; min-width: 16px; text-align: center; font-weight: bold; border-radius: 3px; padding: 0 4px; margin-left: 4px; }
+        .grade-A { background: #1d4d2b; color: #7ee29a; } .grade-B { background: #4a4420; color: #e6d36a; } .grade-C { background: #552626; color: #f08a8a; }
         table.ref-table { width: 100%; border-collapse: collapse; font-size: 12px; }
         table.ref-table td { padding: 2px 4px; border-bottom: 1px solid #2a2a2a; vertical-align: top; color: #ddd; }
         table.ref-table td.rk { color: #8aa; white-space: nowrap; width: 38%; }
@@ -338,11 +366,11 @@
         const LS_KEY = 'sky_mapper_ui_v2';
         const D2R = Math.PI / 180, R2D = 180 / Math.PI;   // used from init-time onward
 
-        A.init.then(() => {
+        aladinReady.then(A => A.init.then(() => {
             console.log("✅ Aladin Lite initialized");
 
             const aladin = A.aladin('#aladin-lite-div', {
-                survey: "P/DSS2/color",
+                survey: window.ALADIN_FALLBACK ? window.FALLBACK_SURVEY : "P/DSS2/color",
                 fov: SETTINGS.initialFov,
                 showReticle: true,
                 showZoomControl: true,
@@ -637,6 +665,26 @@
                 return best;
             }
             function hideDetails() { els.panel.style.display = 'none'; }
+            // Depth & quality section (skymap_quality.py). Depth is relative: +0 mag = 1 h
+            // at the rig's reference sky (darkest 10% for that filter class) and median seeing.
+            function depthQualityHtml(q) {
+                if (!q || !q.classes) return '';
+                const rows = Object.entries(q.classes)
+                    .sort((a, b) => b[1].eff_seconds - a[1].eff_seconds)
+                    .map(([f, v]) => '<tr><td>' + esc(f) + '</td><td>' + fmtExposure(v.seconds) + '</td><td>'
+                        + fmtExposure(v.eff_seconds) + '</td><td>' + (v.depth_mag == null ? '–'
+                        : (v.depth_mag >= 0 ? '+' : '') + v.depth_mag.toFixed(1)) + '</td></tr>').join('');
+                const bits = [];
+                if (q.fwhm != null) bits.push('FWHM ' + q.fwhm.toFixed(1) + '″' + (q.fwhm_rel != null ? ' (' + q.fwhm_rel.toFixed(2) + '× typical)' : ''));
+                if (q.elong != null) bits.push('elongation ' + q.elong.toFixed(2));
+                if (q.sky_rel != null) bits.push('sky ' + q.sky_rel.toFixed(1) + '× darkest');
+                return '<div class="depth-q"><div class="ref-head">Depth &amp; quality' +
+                    (q.grade ? '<span class="grade grade-' + q.grade + '" title="A: sharper than typical and round stars · C: soft or elongated">' + q.grade + '</span>' : '') +
+                    '</div>' +
+                    '<table class="filters"><tr><th>Filter</th><th>Time</th><th title="Time it would take under the reference sky and seeing">Effective</th><th title="Relative depth vs 1 h at reference conditions (1.25·log10 of effective hours)">Depth</th></tr>' + rows + '</table>' +
+                    (bits.length ? '<div class="muted">' + bits.join(' · ') + '</div>' : '') +
+                    '<div class="muted" style="font-size:10px">' + (q.measured ? 'Measured from sample frames of each night; "(est.)" filters inferred from sky brightness.' : 'No frames could be measured for this target.') + '</div></div>';
+            }
             function showDetails(c) {
                 const rows = Object.entries(c.filters)
                     .sort((a, b) => b[1].seconds - a[1].seconds)
@@ -656,6 +704,7 @@
                     '<div class="muted">Dates: ' + esc(dates) + '</div>' +
                     (c.rigs.length ? '<div class="muted">Rig: ' + esc(c.rigs.join(', ')) + '</div>' : '') +
                     '<div class="muted">' + raToHms(c.ra) + '   ' + decToDms(c.dec) + '</div>' +
+                    depthQualityHtml(c.q) +
                     '<button class="search-btn goto-btn" style="margin-top:8px;width:100%;">Center on target</button>' +
                     '<canvas id="det-alt" style="width:100%;height:90px;margin-top:8px;display:none;"></canvas>' +
                     '<div id="det-alt-info" class="muted"></div>' +
@@ -785,14 +834,19 @@
             // ---------- CSV export ----------
             document.getElementById('export-csv').addEventListener('click', () => {
                 const rows = [['name', 'ra_deg', 'dec_deg', 'ra_hms', 'dec_dms', 'frames',
-                               'integration_hours', 'filters', 'mosaic', 'rigs', 'first_date', 'last_date']];
+                               'integration_hours', 'filters', 'mosaic', 'rigs', 'first_date', 'last_date',
+                               'depth_mag', 'depth_filter', 'effective_hours', 'fwhm_arcsec', 'elongation', 'sky_vs_darkest', 'grade']];
                 for (const c of DATA.clusters) {
                     const filters = Object.entries(c.filters)
                         .map(([f, v]) => f + ': ' + fmtExposure(v.seconds)).join('; ');
                     rows.push([c.name, c.ra.toFixed(5), c.dec.toFixed(5), raToHms(c.ra), decToDms(c.dec),
                                c.count, (c.total_seconds / 3600).toFixed(2), filters,
                                c.mosaic ? 'yes' : 'no', c.rigs.join('; '),
-                               c.date_min || '', c.date_max || '']);
+                               c.date_min || '', c.date_max || '',
+                               ...(c.q && c.q.depth_mag != null
+                                   ? [c.q.depth_mag, c.q.depth_class, (c.q.classes[c.q.depth_class].eff_seconds / 3600).toFixed(2),
+                                      c.q.fwhm ?? '', c.q.elong ?? '', c.q.sky_rel ?? '', c.q.grade ?? '']
+                                   : ['', '', '', '', '', '', ''])]);
                 }
                 const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
                 const blob = new Blob([csv], { type: 'text/csv' });
@@ -1333,6 +1387,11 @@
                     '<div class="stat-sec">By rig</div><table class="kv">' + rigRows + '</table>' +
                     '<div class="stat-sec">By month</div><table class="kv">' + monthRows + '</table>' +
                     '<div class="stat-sec">Most-imaged targets</div><table class="kv">' + topRows + '</table>' +
+                    (S.deepest && S.deepest.length
+                        ? '<div class="stat-sec" title="Relative depth: integration weighted by sky darkness and seeing, vs 1 h at reference conditions">Deepest targets</div><table class="kv">' +
+                          S.deepest.map(t => '<tr><td>' + esc(t.name) + (t.grade ? '<span class="grade grade-' + t.grade + '">' + t.grade + '</span>' : '') +
+                              '</td><td class="r">+' + t.depth_mag.toFixed(1) + ' mag · ' + t.eff_hours + ' h eff · ' + esc(t.cls) + '</td></tr>').join('') + '</table>'
+                        : '') +
                     cond;
             }
 
@@ -1848,7 +1907,7 @@
                 let s = null;
                 try { s = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) {}
                 if (!s) return;
-                if (s.survey && [...els.survey.options].some(o => o.value === s.survey)) {
+                if (!window.ALADIN_FALLBACK && s.survey && [...els.survey.options].some(o => o.value === s.survey)) {
                     els.survey.value = s.survey;
                     aladin.setBaseImageLayer(aladin.createImageSurvey(s.survey));
                 }
@@ -1914,7 +1973,7 @@
             rebuild();
             updateLabelVisibility();
             console.log("✅ Sky map ready: " + DATA.clusters.length + " clusters");
-        }).catch(err => console.error("Aladin error:", err));
+        })).catch(err => console.error("Aladin error:", err));
     </script>
 </body>
 </html>

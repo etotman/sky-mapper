@@ -19,3 +19,7 @@ venv/
 
 # macOS
 .DS_Store
+
+# Depth/quality measurements (absolute paths) and cache backups
+quality_cache.json
+*.bak-*

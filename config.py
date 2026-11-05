@@ -93,7 +93,7 @@ FOLDER_PANEL_Y = 90
 HIGHLIGHT_COLOR = "#ff00ff"   # magenta
 
 WEB_SERVER_PORT = 8001         # v12 uses its own port so it can run alongside v11
-SERVER_VERSION  = 18           # bump when the server's API code changes, to force a
+SERVER_VERSION  = 19           # bump when the server's API code changes, to force a
                                # running background server to be replaced on next run
 
 CONSTELLATION_FILE = os.path.join(SCRIPT_DIR, "constellations.lines.json")
@@ -106,6 +106,13 @@ OBJECT_INFO_CACHE = os.path.join(SCRIPT_DIR, "object_info_cache.json")
 # Messier/Caldwell catalog (generated once by generate_catalog.py) for the
 # completion overlay. The page fetches it when the Catalog panel is opened.
 CATALOG_FILE = os.path.join(SCRIPT_DIR, "messier_caldwell.json")
+
+# Depth / filter / quality per target (skymap_quality.py). Reads a few sample frames
+# per night and target; results are cached in quality_cache.json so later runs only
+# measure new files. Set False to skip it. lz4-compressed XISF (NINA's default) needs
+# the optional `lz4` package; without it those frames are simply not measured.
+QUALITY_ENABLED = True
+QUALITY_CACHE = os.path.join(SCRIPT_DIR, "quality_cache.json")
 
 # ---------------------------------------------------------------------------
 # Local overrides: your real rig folders / site / preferences live in
