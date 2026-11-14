@@ -388,6 +388,16 @@
             }
             window.aladin = aladin;   // console access for debugging
 
+            // Deep link (used by Astro Archive): #goto=<ra deg>,<dec deg>[,<fov deg>]
+            const gotoFromHash = () => {
+                const m = /goto=(-?[\d.]+),(-?[\d.]+)(?:,([\d.]+))?/.exec(location.hash);
+                if (!m) return;
+                aladin.gotoRaDec(parseFloat(m[1]), parseFloat(m[2]));
+                if (m[3]) aladin.setFov(parseFloat(m[3]));
+            };
+            gotoFromHash();
+            window.addEventListener('hashchange', gotoFromHash);
+
             const els = {
                 grid:           document.getElementById('grid-toggle'),
                 constellations: document.getElementById('constellation-toggle'),

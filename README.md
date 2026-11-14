@@ -26,6 +26,8 @@ a small local Python web server feeds it your data and answers a few API calls
   Finkbeiner Hα, 2MASS, AllWISE), toggle an **RA/Dec grid** and **constellation
   lines**, **flip** the view horizontally/vertically to match your eyepiece or
   camera, and search for any object by name.
+- **Deep links:** open the map centred anywhere with `aladin_map.html#goto=<ra>,<dec>[,<fov>]`
+  (degrees), e.g. `#goto=23.46,30.66,2` for M33. Changing the hash re-centres an open map.
 
 ### Image folder browser
 - A tree of your image folders (one root per rig). Expand to individual files.
