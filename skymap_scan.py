@@ -55,7 +55,8 @@ def scan_files(cache: dict, only_rigs=None) -> tuple[int, int, Counter]:
             cached = cache.get(filepath)
 
             if cached and cached.get('mtime') == mtime and cached.get('ver') == CACHE_SCHEMA:
-                if 'skip' not in cached and cached.get('color') != color:
+                # refresh the folder's colour/label when they were changed in config (renaming a rig)
+                if 'skip' not in cached and (cached.get('color') != color or cached.get('rig') != rig_label):
                     cached['color'] = color
                     cached['search_dir'] = search_dir
                     cached['rig'] = rig_label
